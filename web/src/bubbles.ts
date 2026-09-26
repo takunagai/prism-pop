@@ -177,10 +177,13 @@ function spawnInView(field: BubbleField, width: number, height: number): void {
   bubble.growT = 0;
 }
 
-/** 毎フレーム呼ぶ。上昇・揺れ・湧き出し・割れアニメの進行を行う。nowMs は呼び出し側の時刻源（p.millis() 等）を渡す */
-export function updateBubbles(field: BubbleField, dtMs: number, nowMs: number, width: number, height: number): void {
+/**
+ * 毎フレーム呼ぶ。上昇・揺れ・湧き出し・割れアニメの進行を行う。nowMs は呼び出し側の時刻源（p.millis() 等）を渡す。
+ * densityScale はプリズムストーム中の湧く量の倍率（目標数と湧く速さに掛ける。上限は MAX_BUBBLES）
+ */
+export function updateBubbles(field: BubbleField, dtMs: number, nowMs: number, width: number, height: number, densityScale = 1): void {
   const dtS = dtMs / 1000;
-  const target = targetBubbleCount(width, height);
+  const target = Math.min(MAX_BUBBLES, Math.round(targetBubbleCount(width, height) * densityScale));
   let activeCount = 0;
 
   for (const bubble of field.bubbles) {
@@ -233,7 +236,7 @@ export function updateBubbles(field: BubbleField, dtMs: number, nowMs: number, w
       respawnFromBottom(field, width, height);
     }
     const interval = SPAWN_INTERVAL_MAX_MS + (SPAWN_INTERVAL_MIN_MS - SPAWN_INTERVAL_MAX_MS) * Math.min(1, deficitRatio * 2);
-    field.spawnTimerMs = interval * randomRange(0.7, 1.3);
+    field.spawnTimerMs = (interval / densityScale) * randomRange(0.7, 1.3);
   }
 }
 

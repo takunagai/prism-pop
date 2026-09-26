@@ -37,6 +37,8 @@ export const AMP_RELEASE_PER_FRAME = 0.9;
 
 /** 同時発音の上限。超えたら最も古い声を奪う */
 export const MAX_VOICES = 28;
+/** タイトルへ戻るとき（stopAll）に鳴っている声を消すフェード秒。短いと途切れた感じ、長いと余韻が残る */
+export const STOP_ALL_FADE_SECONDS = 0.35;
 /** コンテキストが止まっている間（解錠前など）に溜めてよい声の数。解錠時の音の塊を防ぐ */
 export const SUSPENDED_MAX_VOICES = 4;
 /** 声を奪うときのフェード秒。短いとプチッと鳴り、長いと重なりが残る */
@@ -236,6 +238,35 @@ export const CREATURE_JELLYFISH_VIBRATO_CENTS = 35;
 /** 2 回目までの秒（creatures.ts のクラゲの flapHz 2.3 の 1 周期） */
 export const CREATURE_JELLYFISH_GAP_SECONDS = 0.435;
 export const CREATURE_JELLYFISH_GAINS = [0.7, 0.45] as const;
+
+// ---- プリズムストーム（stormRise / stormPad / stormFinale） -----------
+
+/** 開始の上昇グリッサンド: 開始音（MIDI）、オクターブ数（+ level、上限あり）、音の間隔秒、音量 */
+export const STORM_RISE_START_MIDI = 65; // F4
+/** 上昇に使う和声音（主音からの半音。1-3-5-#4-7、昇順に並べ替えて使う） */
+export const STORM_RISE_CHORD_SEMITONES = [0, 4, 7, 6, 11] as const;
+export const STORM_RISE_OCTAVES = 2;
+export const STORM_RISE_MAX_EXTRA_OCTAVES = 1;
+export const STORM_RISE_STEP_SECONDS = 0.028;
+export const STORM_RISE_GAIN = 0.55;
+export const STORM_RISE_PAN_WIDTH = 0.8;
+/** パッドの膨らみ: ピーク音量・立ち上がり秒・終了後の減衰の時定数秒 */
+export const STORM_PAD_GAIN = 0.14;
+export const STORM_PAD_ATTACK_SECONDS = 1.2;
+export const STORM_PAD_RELEASE_SECONDS = 1.6;
+/** 締め: 主和音（主音からの半音）、開始音、オクターブ数（level ごとに下へ 1 オクターブ、上限あり）、かき鳴らす間隔秒、音量、減衰の伸び */
+export const STORM_FINALE_CHORD_SEMITONES = [0, 4, 7, 11] as const; // 1-3-5-7
+export const STORM_FINALE_START_MIDI = 65; // F4
+export const STORM_FINALE_OCTAVES = 3;
+export const STORM_FINALE_MAX_EXTRA_OCTAVES = 1;
+export const STORM_FINALE_STEP_SECONDS = 0.022;
+export const STORM_FINALE_GAIN = 0.55;
+export const STORM_FINALE_DECAY_SCALE = 1.6;
+/** 締めの低い主音（marimba）の MIDI と音量 */
+export const STORM_FINALE_BASS_MIDI = 53; // F3
+export const STORM_FINALE_BASS_GAIN = 0.8;
+/** これより上の音は鳴らさない（music.ts の LADDER_TOP_MIDI と揃える） */
+export const STORM_TOP_MIDI = 100;
 
 // ---- milestoneGliss ------------------------------------------------
 

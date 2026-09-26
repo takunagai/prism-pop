@@ -8,14 +8,21 @@ import { backgroundBlobs } from "../field";
 import { PALETTE_BASE } from "../tuning";
 
 /** width/height は低解像度 canvas 自身の px（呼び出し側が 1/4 スケールで確保している前提） */
-export function drawBackground2D(ctx: CanvasRenderingContext2D, width: number, height: number, timeSec: number, energy: number): void {
+export function drawBackground2D(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  timeSec: number,
+  energy: number,
+  prism = 0,
+): void {
   ctx.save();
   ctx.globalCompositeOperation = "source-over";
   ctx.fillStyle = PALETTE_BASE;
   ctx.fillRect(0, 0, width, height);
 
   const shortEdge = Math.min(width, height);
-  const blobs = backgroundBlobs(timeSec, energy);
+  const blobs = backgroundBlobs(timeSec, energy, prism);
 
   ctx.globalCompositeOperation = "lighter";
   ctx.globalAlpha = 0.8;

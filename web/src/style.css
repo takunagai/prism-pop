@@ -179,6 +179,235 @@ strong {
   }
 }
 
+/* 右上の丸ボタン（play 中は × = タイトルへ戻る、gate では ? = 遊び方）。泡の邪魔をしないよう控えめにし、触れる大きさは 44px を確保する */
+.corner-button {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  z-index: 15;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(244, 242, 255, 0.18);
+  border-radius: 50%;
+  background: rgba(13, 10, 31, 0.35);
+  color: rgba(244, 242, 255, 0.6);
+  cursor: pointer;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.corner-button[hidden] {
+  display: none;
+}
+
+.corner-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+@media (hover: hover) {
+  .corner-button:hover {
+    border-color: rgba(244, 242, 255, 0.4);
+    background: rgba(124, 77, 255, 0.35);
+    color: #ffffff;
+  }
+}
+
+.corner-button:focus-visible {
+  outline: 2px solid var(--palette-lime);
+  outline-offset: 2px;
+}
+
+/* × ボタンの縁の進捗リング（次のプリズムストームまで。1 周 = 1000 個）。12 時から時計回りに伸びる */
+.corner-button .storm-ring {
+  position: absolute;
+  inset: -1px;
+  width: calc(100% + 2px);
+  height: calc(100% + 2px);
+  stroke: url(#storm-ring-gradient);
+  stroke-width: 2;
+  transform: rotate(-90deg);
+  pointer-events: none;
+  transition: filter 0.6s ease;
+}
+
+.storm-ring-arc {
+  fill: none;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  opacity: 0.85;
+  transition: stroke-dashoffset 0.25s ease-out;
+}
+
+/* 予告の区間: 輪が光り始める */
+#exit-button.is-storm-near .storm-ring {
+  filter: drop-shadow(0 0 3px rgba(198, 255, 0, 0.7)) drop-shadow(0 0 6px rgba(124, 77, 255, 0.6));
+}
+
+/* ストーム中: 満タンのままゆっくり脈打つ（1.6 秒周期。点滅にはしない） */
+#exit-button.is-storm .storm-ring {
+  filter: drop-shadow(0 0 4px rgba(198, 255, 0, 0.8)) drop-shadow(0 0 10px rgba(255, 92, 225, 0.7));
+  animation: storm-ring-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes storm-ring-pulse {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* 遊び方のダイアログ。外側（::backdrop）のタップで閉じられるよう、余白は内側の .help-body に持たせる */
+#help-dialog {
+  width: min(440px, calc(100vw - 32px));
+  /* 上下 18px ずつ漂うぶんの余白を足して、背の低い画面でも端が切れないようにする */
+  max-height: calc(100dvh - 72px);
+  padding: 0;
+  overflow-y: auto;
+  border: none;
+  border-radius: 16px;
+  /* 透かして奥の泡を感じさせる。文字の下地は背後のぼかしで確保する */
+  background: rgba(13, 10, 31, 0.6);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  color: #f4f2ff;
+  box-shadow: 0 0 48px rgba(124, 77, 255, 0.35);
+  /* ページ全体は touch-action: none なので、長い画面で読めるよう縦スクロールだけ許す */
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+
+#help-dialog::backdrop {
+  background: rgba(13, 10, 31, 0.55);
+}
+
+/* 出現: 下から浮き上がりながらふわっと現れ、その後は泡のように漂う。
+   上下（transform・±18px・周期 9 秒）・左右（translate・±15px・周期 14 秒）・傾き（rotate・±1.2°・周期 11 秒）を
+   別周期で重ね、毎回少し違う軌道にする。
+   読みやすさのため周期は長く取り、速さは最大でも毎秒 15px 程度に抑える */
+#help-dialog[open] {
+  animation:
+    help-appear 0.9s cubic-bezier(0.22, 1, 0.36, 1) both,
+    help-float-y 9s ease-in-out 0.9s infinite,
+    help-float-x 14s 0.9s infinite,
+    help-tilt 11s 0.9s infinite;
+}
+
+#help-dialog[open]::backdrop {
+  animation: help-backdrop-appear 0.5s ease-out both;
+}
+
+.help-body {
+  padding: 24px 24px 20px;
+}
+
+#help-title {
+  /* グラデーションを文字幅に収める（ブロック幅だと最初の色しか見えない） */
+  width: fit-content;
+  margin: 0 auto 16px;
+  font-size: 22px;
+  font-weight: bold;
+  letter-spacing: 0.04em;
+  background: linear-gradient(100deg, #c6ff00, #3dffb8, #5cc8ff, #7c4dff, #ff5ce1);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.help-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.help-list li {
+  position: relative;
+  padding-left: 18px;
+}
+
+.help-list li + li {
+  margin-top: 8px;
+}
+
+/* 行頭の点は度数色（music.ts の DEGREE_COLORS）を順に回す */
+.help-list li::before {
+  content: "";
+  position: absolute;
+  top: 0.72em;
+  left: 2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dot-color, #c6ff00);
+}
+
+.help-list li:nth-child(5n + 2) {
+  --dot-color: #3dffb8;
+}
+
+.help-list li:nth-child(5n + 3) {
+  --dot-color: #5cc8ff;
+}
+
+.help-list li:nth-child(5n + 4) {
+  --dot-color: #7c4dff;
+}
+
+.help-list li:nth-child(5n + 5) {
+  --dot-color: #ff5ce1;
+}
+
+.help-note {
+  margin: 16px 0 0;
+  text-align: center;
+  font-size: 14px;
+  color: rgba(244, 242, 255, 0.7);
+}
+
+#help-close {
+  display: block;
+  margin: 20px auto 0;
+  min-width: 120px;
+  min-height: 44px;
+  padding: 0 24px;
+  border: none;
+  border-radius: 22px;
+  background: rgba(124, 77, 255, 0.35);
+  color: #ffffff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+#help-close:focus-visible {
+  outline: 2px solid var(--palette-lime);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  #help-close:hover {
+    background: rgba(124, 77, 255, 0.55);
+  }
+}
+
 #debug-overlay {
   position: fixed;
   top: max(8px, env(safe-area-inset-top));
@@ -228,10 +457,91 @@ strong {
   }
 }
 
+@keyframes help-appear {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* help-appear の終わり（translateY(0)）から始めて継ぎ目を出さない。
+   中心から上下対称に振り、端でだけ減速させる（正弦波に近い動き） */
+@keyframes help-float-y {
+  0% {
+    transform: translateY(0);
+    animation-timing-function: ease-out;
+  }
+  25% {
+    transform: translateY(-18px);
+    animation-timing-function: ease-in-out;
+  }
+  75% {
+    transform: translateY(18px);
+    animation-timing-function: ease-in;
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+/* 左右の揺れ。中央を通るときは速いまま抜け、端でだけ減速させる（正弦波に近い動き） */
+@keyframes help-float-x {
+  0% {
+    translate: 0 0;
+    animation-timing-function: ease-out;
+  }
+  25% {
+    translate: 15px 0;
+    animation-timing-function: ease-in-out;
+  }
+  75% {
+    translate: -15px 0;
+    animation-timing-function: ease-in;
+  }
+  100% {
+    translate: 0 0;
+  }
+}
+
+/* 傾き。文字が読みにくくならないよう角度はごく小さく（幅 440px で角が 5px ほど動く程度） */
+@keyframes help-tilt {
+  0% {
+    rotate: 0deg;
+    animation-timing-function: ease-out;
+  }
+  25% {
+    rotate: 1.2deg;
+    animation-timing-function: ease-in-out;
+  }
+  75% {
+    rotate: -1.2deg;
+    animation-timing-function: ease-in;
+  }
+  100% {
+    rotate: 0deg;
+  }
+}
+
+@keyframes help-backdrop-appear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   #gate-title,
   #gate-text,
-  #gate-prompt {
+  #gate-prompt,
+  #help-dialog[open],
+  #help-dialog[open]::backdrop,
+  #exit-button.is-storm .storm-ring {
     animation: none;
   }
 }

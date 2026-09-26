@@ -81,27 +81,45 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 
 const BASE_HSL = BG_BLOB_COLORS.map((hex) => rgbToHsl(...hexToRgb01(hex)));
 
+/** プリズムストームの虹色が 1 往復する秒 */
+const PRISM_HUE_CYCLE_S = 7;
+
+/** 色相を泥色帯の上端から始まる連続区間 [MUDDY_HUE_MAX, MUDDY_HUE_MAX + 360) で表す（帯をまたがずに補間するため） */
+function toAllowedArc(hueDeg: number): number {
+  const wrapped = ((hueDeg % 360) + 360) % 360;
+  return wrapped < MUDDY_HUE_MAX ? wrapped + 360 : wrapped;
+}
+
 /**
  * energy に応じてブロブを明るく・バイオレット/ライム寄りに色ずらしする。
- * 最終色相は avoidMuddyHue で泥色帯の外に保つ。
+ * prism（0..1、プリズムストームとその予告）では、泥色帯を除いた色相の範囲を往復する虹色へ寄せる
+ * （帯をまたいで色が跳ばないよう、範囲の端で折り返す）。最終色相は avoidMuddyHue で泥色帯の外に保つ。
  */
-function blobColorForEnergy(index: number, energy: number): [number, number, number] {
+function blobColor(index: number, energy: number, prism: number, timeSec: number): [number, number, number] {
   const [baseHue, baseSat, baseLight] = BASE_HSL[index];
   const hueShift = index % 2 === 0 ? 18 : -14; // 偶数はバイオレット寄り、奇数はライム寄りへ少し逃がす
-  const hue = avoidMuddyHue(baseHue + hueShift * energy);
-  const sat = Math.min(1, baseSat + 0.22 * energy);
-  const light = Math.min(0.62, baseLight + 0.16 * energy);
+  let hue = avoidMuddyHue(baseHue + hueShift * energy);
+  if (prism > 0) {
+    const arcStart = MUDDY_HUE_MAX;
+    const arcLength = 360 - (MUDDY_HUE_MAX - MUDDY_HUE_MIN);
+    const phase = timeSec / PRISM_HUE_CYCLE_S + index * 0.25;
+    const rainbowHue = arcStart + arcLength * (0.5 - 0.5 * Math.cos(phase * Math.PI * 2));
+    const from = toAllowedArc(hue);
+    hue = avoidMuddyHue(from + (rainbowHue - from) * prism);
+  }
+  const sat = Math.min(1, baseSat + 0.22 * energy + 0.2 * prism);
+  const light = Math.min(0.66, baseLight + 0.16 * energy + 0.08 * prism);
   return hslToRgb(hue, sat, light);
 }
 
-/** 現在時刻・energy から 4 個の背景ブロブを計算する（2D・GL 共通） */
-export function backgroundBlobs(timeSec: number, energy: number): BackgroundBlob[] {
+/** 現在時刻・energy・prism（プリズムストームの虹色 0..1）から 4 個の背景ブロブを計算する（2D・GL 共通） */
+export function backgroundBlobs(timeSec: number, energy: number, prism = 0): BackgroundBlob[] {
   const blobs: BackgroundBlob[] = [];
   for (let i = 0; i < BLOB_COUNT; i++) {
     const d = DRIFT[i];
     const x = d.cx + d.ax * Math.sin((timeSec / d.periodX) * Math.PI * 2 + d.phase);
     const y = d.cy + d.ay * Math.cos((timeSec / d.periodY) * Math.PI * 2 + d.phase * 1.3);
-    const [r, g, b] = blobColorForEnergy(i, energy);
+    const [r, g, b] = blobColor(i, energy, prism, timeSec);
     blobs.push({ x, y, radius: BASE_RADIUS[i] + 0.04 * energy, r, g, b });
   }
   return blobs;

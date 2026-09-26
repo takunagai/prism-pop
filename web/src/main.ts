@@ -36,10 +36,25 @@ import {
   hitTestCreatures,
   loadCreatureImages,
   startleCreature,
+  summonCreatures,
   updateCreatures,
 } from "./creatures";
 import type { CreatureHitMask } from "./creatures";
 import { backgroundBlobs } from "./field";
+import {
+  countPop,
+  createStormState,
+  endStorm,
+  isFinaleDue,
+  isStormDue,
+  startStorm,
+  stormAnticipation,
+  stormCreatureGlow,
+  stormIntensity,
+  stormProgress,
+  stormSpawnBoost,
+  stormWaveIntervalMs,
+} from "./storm";
 import { QualityController } from "./quality";
 import type { QualityTier } from "./quality";
 import { drawBackground2D } from "./render/background2d";
@@ -64,6 +79,12 @@ import {
   SPLASH_CAP_RICH,
   SPLASH_CAP_STANDARD_STEPS,
   SPLASH_PARTICLES_PER_SIZE,
+  STORM_ANTICIPATION_PRISM,
+  STORM_EVERY,
+  STORM_FINALE_RADIUS_RATIO,
+  STORM_GATHER_RADIUS_RATIO,
+  STORM_SCATTER_AT,
+  STORM_SHAKE_AMPLITUDE_PX,
 } from "./tuning";
 
 // p5 v2 の Friendly Error System は偽陽性で fps を殺すので必ず止める（インスタンス生成前）
@@ -77,6 +98,11 @@ const glCanvas = document.querySelector<HTMLCanvasElement>("#gl")!;
 const p5HostEl = document.querySelector<HTMLDivElement>("#p5-host")!;
 const glowCanvas = document.querySelector<HTMLCanvasElement>("#glow")!;
 const gateEl = document.querySelector<HTMLDivElement>("#gate")!;
+const exitButtonEl = document.querySelector<HTMLButtonElement>("#exit-button")!;
+const helpButtonEl = document.querySelector<HTMLButtonElement>("#help-button")!;
+const helpDialogEl = document.querySelector<HTMLDialogElement>("#help-dialog")!;
+const helpCloseEl = document.querySelector<HTMLButtonElement>("#help-close")!;
+const stormRingArcEl = document.querySelector<SVGCircleElement>("#exit-button .storm-ring-arc")!;
 const debugOverlayEl = document.querySelector<HTMLPreElement>("#debug-overlay")!;
 
 const searchParams = new URLSearchParams(location.search);
@@ -128,6 +154,14 @@ let comboAnchorIndex = 0;
 let lastPopTimeMs = -Infinity;
 let energy = 0;
 let shakeStartMs = -Infinity;
+let shakeAmplitudePx = SHAKE_MILESTONE_AMPLITUDE_PX;
+/** OS の「視差効果を減らす」。プリズムストームの揺れを出さない */
+const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+
+// ---- プリズムストーム（3.4.1） ----
+// 開発ビルドのみ ?pops=N で累計の初期値を入れて、予告とストームをすぐ確かめられる
+const initialPops = import.meta.env.DEV ? Number(searchParams.get("pops")) || 0 : 0;
+const storm = createStormState(initialPops);
 let lastPopX = width / 2;
 let lastPopY = height / 2;
 let lastError = "";
@@ -203,6 +237,9 @@ function collectDebugInfo(): DebugSnapshot {
     popsSwipe: popTotals.swipe,
     popsChain: popTotals.chain,
     creatureStartles: creatureStartleCount,
+    totalPops: storm.totalPops,
+    stormLevel: storm.level,
+    stormActive: storm.isActive,
     combo: comboCount,
     ...audio.getDiagnostics(),
   };
@@ -277,6 +314,39 @@ function handleResize(p: P5): void {
   if (richRenderer) richRenderer.resize(width, height, GL_RENDER_SCALE_BASE * devicePixelRatioClamped);
 }
 
+// ---- タイトルへ戻る（3.1） ----
+function returnToTitle(): void {
+  if (!hasStarted) return;
+  hasStarted = false;
+  gateEl.classList.remove("is-hidden");
+  exitButtonEl.hidden = true;
+  helpButtonEl.hidden = false;
+  audio.stopAll();
+  // comboEnd の余韻は鳴らさずに打ち切る
+  comboCount = 0;
+  energy = 0;
+  chainQueue = [];
+  pointers.clear();
+  // ストームは締めずに打ち切る（累計は保持）
+  if (storm.isActive) endStorm(storm);
+  creatureField.gather = null;
+  creatureField.glowFloor = 0;
+  updateStormRing();
+}
+
+// ---- 遊び方のダイアログ（gate のときだけ開ける） ----
+function openHelp(): void {
+  if (helpDialogEl.open) return;
+  if (typeof helpDialogEl.showModal === "function") helpDialogEl.showModal();
+  else helpDialogEl.setAttribute("open", "");
+}
+
+function closeHelp(): void {
+  if (!helpDialogEl.open) return;
+  if (typeof helpDialogEl.close === "function") helpDialogEl.close();
+  else helpDialogEl.removeAttribute("open");
+}
+
 // ---- 入力 ----
 function hitSlopFor(pointerType: string): number {
   return pointerType === "mouse" ? HIT_SLOP_PX_MOUSE : HIT_SLOP_PX_TOUCH;
@@ -308,6 +378,8 @@ function doPop(bubble: Bubble, kind: PopKind): void {
   const result = popBubble(bubbleField, bubble.id, width, height);
   if (!result) return;
   popTotals[kind]++;
+  countPop(storm);
+  updateStormRing();
 
   const isNewCombo = comboCount === 0 || nowMs - lastPopTimeMs > COMBO_WINDOW_MS;
   if (isNewCombo) {
@@ -340,18 +412,29 @@ function doPop(bubble: Bubble, kind: PopKind): void {
   spawnRing(effectsState, result.x, result.y, color, result.radius * 3.2, kind === "chain");
   spawnRipple(effectsState, result.x, result.y, color, result.radius * 2, 0.45);
 
-  if (comboCount % MILESTONE_EVERY === 0) {
+  // ストーム中はストームの波が代わりを務める
+  if (!storm.isActive && comboCount % MILESTONE_EVERY === 0) {
     triggerPrismBurst(result.x, result.y, comboCount / MILESTONE_EVERY, nowMs);
   }
 }
 
-function triggerPrismBurst(originX: number, originY: number, level: number, nowMs: number): void {
-  audio.comboMilestone(level, originX / width, originY / height);
-  shakeStartMs = nowMs;
+interface PrismBurstOptions {
+  /** 輪の半径（画面対角線比） */
+  radiusRatio?: number;
+  /** true なら comboMilestone を鳴らさない（呼び出し側が別の音を鳴らす） */
+  isSilent?: boolean;
+  /** 揺れの振幅 px（0 で揺らさない） */
+  shakePx?: number;
+}
+
+function triggerPrismBurst(originX: number, originY: number, level: number, nowMs: number, options: PrismBurstOptions = {}): void {
+  const radiusRatio = options.radiusRatio ?? PRISM_BURST_RADIUS_RATIO;
+  if (!options.isSilent) audio.comboMilestone(level, originX / width, originY / height);
+  startShake(nowMs, options.shakePx ?? SHAKE_MILESTONE_AMPLITUDE_PX);
 
   const diagonal = Math.hypot(width, height);
-  const maxRadius = diagonal * PRISM_BURST_RADIUS_RATIO;
-  spawnRing(effectsState, originX, originY, "#ffffff", maxRadius, true, PRISM_BURST_RADIUS_RATIO * 1200);
+  const maxRadius = diagonal * radiusRatio;
+  spawnRing(effectsState, originX, originY, "#ffffff", maxRadius, true, radiusRatio * 1200);
   spawnRipple(effectsState, originX, originY, "#ffffff", maxRadius * 0.45, 0.5);
 
   const candidates: Array<{ id: number; dist: number }> = [];
@@ -380,15 +463,115 @@ function processChainQueue(nowMs: number): void {
   chainQueue = remaining;
 }
 
+function startShake(nowMs: number, amplitudePx: number): void {
+  if (amplitudePx <= 0) return;
+  shakeStartMs = nowMs;
+  shakeAmplitudePx = amplitudePx;
+}
+
 function computeShake(nowMs: number): { x: number; y: number } | null {
   const elapsed = nowMs - shakeStartMs;
   if (elapsed < 0 || elapsed > SHAKE_MILESTONE_DURATION_MS) return null;
   const decay = 1 - elapsed / SHAKE_MILESTONE_DURATION_MS;
   const angle = nowMs * 0.05;
   return {
-    x: Math.sin(angle * 2.3) * SHAKE_MILESTONE_AMPLITUDE_PX * decay,
-    y: Math.cos(angle * 1.7) * SHAKE_MILESTONE_AMPLITUDE_PX * decay,
+    x: Math.sin(angle * 2.3) * shakeAmplitudePx * decay,
+    y: Math.cos(angle * 1.7) * shakeAmplitudePx * decay,
   };
+}
+
+// ---- プリズムストームの進行（3.4.1） ----
+/** ストームの揺れ。「視差効果を減らす」のときは揺らさない */
+function stormShakePx(amplitudePx: number): number {
+  return prefersReducedMotion?.matches ? 0 : amplitudePx;
+}
+
+/** × ボタンの縁の進捗リング（1 周 = STORM_EVERY 個）。pathLength=1 の円なので dashoffset = 1 − 進み具合 */
+function updateStormRing(): void {
+  const fraction = storm.isActive || isStormDue(storm) ? 1 : (storm.totalPops % STORM_EVERY) / STORM_EVERY;
+  stormRingArcEl.style.strokeDashoffset = (1 - fraction).toFixed(4);
+  exitButtonEl.classList.toggle("is-storm-near", stormAnticipation(storm) > 0);
+  exitButtonEl.classList.toggle("is-storm", storm.isActive);
+}
+
+function beginStorm(nowMs: number): void {
+  startStorm(storm, nowMs);
+  audio.stormStart(storm.level, storm.durationMs / 1000);
+  startShake(nowMs, stormShakePx(STORM_SHAKE_AMPLITUDE_PX));
+  // 開幕: 画面中央から虹の輪
+  const diagonal = Math.hypot(width, height);
+  spawnRing(effectsState, width / 2, height / 2, "#ffffff", diagonal * 0.6, true, 900);
+  spawnRipple(effectsState, width / 2, height / 2, "#ffffff", diagonal * 0.3, 0.6);
+  summonCreatures(creatureField, width, height);
+  updateStormRing();
+}
+
+/** 波: ランダムな泡からプリズムバースト（輪 + 連鎖）を起こす */
+function stormWave(nowMs: number): void {
+  const candidates = bubbleField.bubbles.filter((bubble) => bubble.active && bubble.state === "rising" && bubble.y > 0 && bubble.y < height);
+  const origin = candidates.length > 0 ? candidates[Math.floor(Math.random() * candidates.length)] : null;
+  const originX = origin ? origin.x : width * (0.2 + Math.random() * 0.6);
+  const originY = origin ? origin.y : height * (0.2 + Math.random() * 0.6);
+  lastPopX = originX;
+  lastPopY = originY;
+  triggerPrismBurst(originX, originY, storm.level + 1, nowMs, { shakePx: stormShakePx(SHAKE_MILESTONE_AMPLITUDE_PX) });
+}
+
+/** 生き物を中央から散らす（種類ごとの驚きの反応） */
+function scatterCreatures(nowMs: number): void {
+  creatureField.gather = null;
+  for (const creature of creatureField.creatures) {
+    startleCreature(creatureField, creature, width / 2, height / 2, width, height, nowMs / 1000);
+  }
+}
+
+/** 締め: 主和音 + 画面中央から画面全体を覆う輪で残りの泡を連鎖させる。この後の収まりの間は波を起こさない */
+function stormFinale(nowMs: number): void {
+  storm.hasFinale = true;
+  audio.stormFinale(storm.level);
+  lastPopX = width / 2;
+  lastPopY = height / 2;
+  triggerPrismBurst(width / 2, height / 2, storm.level, nowMs, {
+    radiusRatio: STORM_FINALE_RADIUS_RATIO,
+    isSilent: true,
+    shakePx: stormShakePx(STORM_SHAKE_AMPLITUDE_PX),
+  });
+}
+
+function finishStorm(): void {
+  endStorm(storm);
+  creatureField.gather = null;
+  creatureField.glowFloor = 0;
+  updateStormRing();
+}
+
+/** 毎フレーム呼ぶ。発動・波・生き物の集合と散開・締めを進め、演出の強さ（0..1）を返す */
+function updateStorm(nowMs: number): number {
+  if (!hasStarted) return 0;
+  if (isStormDue(storm)) beginStorm(nowMs);
+  if (!storm.isActive) return 0;
+
+  const progress = stormProgress(storm, nowMs);
+  if (progress >= 1) {
+    finishStorm();
+    return 0;
+  }
+  if (isFinaleDue(storm, nowMs)) stormFinale(nowMs);
+  if (!storm.hasFinale && nowMs >= storm.nextWaveMs) {
+    stormWave(nowMs);
+    storm.nextWaveMs = nowMs + stormWaveIntervalMs(storm.level);
+  }
+  if (!storm.hasScattered && progress >= STORM_SCATTER_AT) {
+    storm.hasScattered = true;
+    scatterCreatures(nowMs);
+  } else if (!storm.hasScattered) {
+    // リサイズに追従するため毎フレーム置き直す
+    creatureField.gather = { centerX: width / 2, centerY: height / 2, radiusPx: Math.min(width, height) * STORM_GATHER_RADIUS_RATIO };
+  }
+
+  const intensity = stormIntensity(storm, nowMs);
+  creatureField.glowFloor = intensity * stormCreatureGlow(storm.level);
+  return intensity;
 }
 
 function drawGlow(amp: number): void {
@@ -450,9 +633,16 @@ new P5((p: P5) => {
     window.addEventListener(
       "pointerdown",
       (e: PointerEvent) => {
+        // 右上のボタンとダイアログ上の押下は泡・生き物の判定に渡さない（それぞれの click で処理する）。
+        // ダイアログの外側（::backdrop）への押下も target はダイアログ自身になる
+        if (helpDialogEl.open) return;
+        if (e.target instanceof Element && e.target.closest(".corner-button, #help-dialog")) return;
         if (!hasStarted) {
           hasStarted = true;
           gateEl.classList.add("is-hidden");
+          exitButtonEl.hidden = false;
+          helpButtonEl.hidden = true;
+          updateStormRing();
           // resume() の解決を待たない。音の成否に関わらず描画は続ける
           audio.start().catch((error: unknown) => {
             lastError = error instanceof Error ? error.message : String(error);
@@ -493,6 +683,17 @@ new P5((p: P5) => {
     };
     window.addEventListener("pointerup", releasePointer, { passive: true });
     window.addEventListener("pointercancel", releasePointer, { passive: true });
+
+    exitButtonEl.addEventListener("click", returnToTitle);
+    helpButtonEl.addEventListener("click", openHelp);
+    helpCloseEl.addEventListener("click", closeHelp);
+    // 外側（::backdrop）のクリックは target がダイアログ自身になる。内側は .help-body が受ける
+    helpDialogEl.addEventListener("click", (e: MouseEvent) => {
+      if (e.target === helpDialogEl) closeHelp();
+    });
+    window.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "Escape") returnToTitle();
+    });
   };
 
   p.draw = () => {
@@ -539,10 +740,15 @@ new P5((p: P5) => {
     creaturesCanvas.style.display = richActive ? "none" : "block";
     if (richActive && richRenderer && creatureImages && !richRenderer.hasCreatures) richRenderer.setCreatureImages(creatureImages);
 
-    energy = Math.max(0, energy - ENERGY_DECAY_PER_S * (dtMs / 1000));
+    // プリズムストーム: 強さ 0..1 で energy の下限・泡の湧く量・背景の虹色を持ち上げる
+    const stormPower = updateStorm(nowMs);
+    const stormPrism = Math.max(stormPower, stormAnticipation(storm) * STORM_ANTICIPATION_PRISM);
+    const densityScale = storm.isActive ? 1 + (stormSpawnBoost(storm.level) - 1) * stormPower : 1;
+
+    energy = Math.max(stormPower, energy - ENERGY_DECAY_PER_S * (dtMs / 1000), 0);
     audio.setEnergy(energy);
 
-    updateBubbles(bubbleField, dtMs, nowMs, width, height);
+    updateBubbles(bubbleField, dtMs, nowMs, width, height, densityScale);
     processChainQueue(nowMs);
 
     if (comboCount > 0 && nowMs - lastPopTimeMs > COMBO_WINDOW_MS) {
@@ -558,7 +764,7 @@ new P5((p: P5) => {
     stageEl.style.transform = shake ? `translate(${shake.x.toFixed(2)}px, ${shake.y.toFixed(2)}px)` : "";
 
     const timeSec = nowMs / 1000;
-    const blobs = backgroundBlobs(timeSec, energy);
+    const blobs = backgroundBlobs(timeSec, energy, stormPrism);
     updateCreatures(creatureField, dtMs, timeSec, width, height);
 
     if (richActive && richRenderer) {
@@ -574,7 +780,7 @@ new P5((p: P5) => {
       });
     } else {
       const bgCtx = bgCanvas.getContext("2d");
-      if (bgCtx) drawBackground2D(bgCtx, bgCanvas.width, bgCanvas.height, timeSec, energy);
+      if (bgCtx) drawBackground2D(bgCtx, bgCanvas.width, bgCanvas.height, timeSec, energy, stormPrism);
       if (!creaturesCtx) creaturesCtx = creaturesCanvas.getContext("2d");
       if (creaturesCtx && creatureImages) drawCreatures2D(creaturesCtx, width, height, creatureField.poses, creatureImages);
     }

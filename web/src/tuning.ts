@@ -85,6 +85,39 @@ export const PRISM_CHAIN_INTERVAL_MS = 45;
 export const SHAKE_MILESTONE_DURATION_MS = 260;
 export const SHAKE_MILESTONE_AMPLITUDE_PX = 6;
 
+// ---- プリズムストーム（3.4.1） ----
+/** 累計でこの個数を割るたびにストームが起きる */
+export const STORM_EVERY = 1000;
+/** 閾値の何個手前から予告（背景の揺らぎ）を始めるか */
+export const STORM_ANTICIPATION_POPS = 100;
+/** 予告が最大のときの背景の虹色の強さ（ストーム中は 1） */
+export const STORM_ANTICIPATION_PRISM = 0.35;
+/** 持続時間 = BASE + PER_LEVEL ×（level−1）。level は STORM_MAX_SCALING_LEVEL で頭打ち */
+export const STORM_BASE_DURATION_MS = 12000;
+export const STORM_DURATION_PER_LEVEL_MS = 2000;
+export const STORM_MAX_SCALING_LEVEL = 5;
+/** 強さの立ち上がり・収まりの ms */
+export const STORM_RAMP_IN_MS = 1200;
+export const STORM_RAMP_OUT_MS = 2000;
+/** 波（プリズムバースト）の間隔 = BASE − PER_LEVEL ×（level−1）、下限 MIN。点滅にならないよう 1.2s 未満にしない */
+export const STORM_WAVE_INTERVAL_MS = 1800;
+export const STORM_WAVE_INTERVAL_PER_LEVEL_MS = 150;
+export const STORM_WAVE_INTERVAL_MIN_MS = 1200;
+/** 泡の湧く量の倍率 = BASE + PER_LEVEL ×（level−1） */
+export const STORM_SPAWN_BOOST = 1.4;
+export const STORM_SPAWN_BOOST_PER_LEVEL = 0.1;
+/** 生き物が中央から散るタイミング（進行度 0..1） */
+export const STORM_SCATTER_AT = 0.65;
+/** 生き物が集まる輪の半径（画面短辺比） */
+export const STORM_GATHER_RADIUS_RATIO = 0.22;
+/** 生き物の光 = BASE + PER_LEVEL ×（level−1）（強さを掛ける） */
+export const STORM_CREATURE_GLOW = 0.55;
+export const STORM_CREATURE_GLOW_PER_LEVEL = 0.08;
+/** 締めの輪の半径（画面対角線比）。中央から画面全体を覆う */
+export const STORM_FINALE_RADIUS_RATIO = 0.75;
+/** 開始・締めの揺れの振幅 px */
+export const STORM_SHAKE_AMPLITUDE_PX = 10;
+
 // ---- しぶき粒子（7.4） ----
 export const SPLASH_PARTICLES_PER_SIZE = 18;
 export const SPLASH_CAP_STANDARD_INITIAL = 1200;

@@ -42,6 +42,12 @@ export interface AudioEngine {
   miss(x: number, y: number): void;
   /** 浮遊生物に触れて驚かせたとき（種類ごとの効果音） */
   creature(event: CreatureEvent): void;
+  /** プリズムストーム開始（上昇グリッサンド + パッドを持続時間いっぱい膨らませる） */
+  stormStart(level: number, durationSeconds: number): void;
+  /** プリズムストームの締め（主和音をかき鳴らす） */
+  stormFinale(level: number): void;
+  /** タイトルへ戻るとき。鳴っている音をフェードして止める（AudioContext は止めない） */
+  stopAll(): void;
   comboMilestone(level: number, x: number, y: number): void;
   comboEnd(combo: number): void;
   /** 毎フレーム呼ばれてよい（内部で平滑化） */
@@ -58,6 +64,9 @@ export class NoopAudioEngine implements AudioEngine {
   pop(): void {}
   miss(): void {}
   creature(): void {}
+  stormStart(): void {}
+  stormFinale(): void {}
+  stopAll(): void {}
   comboMilestone(): void {}
   comboEnd(): void {}
   setEnergy(): void {}

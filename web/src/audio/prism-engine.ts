@@ -147,6 +147,49 @@ export class PrismAudioEngine implements AudioEngine {
     }
   }
 
+  stormStart(level: number, durationSeconds: number): void {
+    if (!this.canPlay()) return;
+    try {
+      this.playStormStart(level, durationSeconds);
+    } catch (error) {
+      this.recordError("stormStart", error);
+    }
+  }
+
+  stormFinale(level: number): void {
+    if (!this.canPlay()) return;
+    try {
+      this.playStormFinale(level);
+    } catch (error) {
+      this.recordError("stormFinale", error);
+    }
+  }
+
+  stopAll(): void {
+    if (!this.canPlay()) return;
+    try {
+      const isRunning = this.isRunning();
+      for (const voice of [...this.activeVoices]) {
+        if (voice.isReleasing) continue;
+        // 止まっている間は時間が進まずフェードが終わらないので即座に切る
+        if (isRunning) {
+          this.releaseVoice(voice, Tuning.STOP_ALL_FADE_SECONDS);
+        } else {
+          this.disposeVoice(voice, true);
+        }
+      }
+      const padSwellGain = this.padSwellGain;
+      if (padSwellGain !== null && isRunning) {
+        const now = this.requireContext().currentTime;
+        holdParam(padSwellGain.gain, now);
+        padSwellGain.gain.linearRampToValueAtTime(0, now + Tuning.STOP_ALL_FADE_SECONDS);
+      }
+      this.recentPopTimes.length = 0;
+    } catch (error) {
+      this.recordError("stopAll", error);
+    }
+  }
+
   creature(event: CreatureEvent): void {
     if (!this.canPlay()) return;
     try {
@@ -672,6 +715,69 @@ export class PrismAudioEngine implements AudioEngine {
     this.finishVoice(voice);
   }
 
+  /** プリズムストーム開始: 和声音の階段を駆け上がるベル + パッドを持続時間いっぱい膨らませる（6 節 stormRise / stormPad） */
+  private playStormStart(level: number, durationSeconds: number): void {
+    const context = this.requireContext();
+    const now = context.currentTime;
+    const safeLevel = Math.max(1, Math.floor(finiteOr(level, 1)));
+    const octaves = Tuning.STORM_RISE_OCTAVES + Math.min(safeLevel - 1, Tuning.STORM_RISE_MAX_EXTRA_OCTAVES);
+    const notes = chordLadder(Tuning.STORM_RISE_START_MIDI, Tuning.STORM_RISE_CHORD_SEMITONES, octaves);
+    notes.forEach((midi, index) => {
+      const startTime = now + index * Tuning.STORM_RISE_STEP_SECONDS;
+      // 左右に往復させる
+      const pan = Math.sin(index * 0.9) * Tuning.STORM_RISE_PAN_WIDTH;
+      const voice = this.createVoice(startTime, pan);
+      voice.output.gain.value = Tuning.VOICE_GAIN * Tuning.STORM_RISE_GAIN;
+      this.addBell(voice, { startTime, frequency: midiToFrequency(midi), weight: 1, decayScale: 0.8, brightness: 1 });
+      this.finishVoice(voice);
+    });
+
+    const padSwellGain = this.padSwellGain;
+    if (padSwellGain !== null) {
+      const holdSeconds = Math.max(Tuning.STORM_PAD_ATTACK_SECONDS, finiteOr(durationSeconds, 12));
+      holdParam(padSwellGain.gain, now);
+      padSwellGain.gain.linearRampToValueAtTime(Tuning.STORM_PAD_GAIN, now + Tuning.STORM_PAD_ATTACK_SECONDS);
+      padSwellGain.gain.setValueAtTime(Tuning.STORM_PAD_GAIN, now + holdSeconds);
+      padSwellGain.gain.setTargetAtTime(0, now + holdSeconds, Tuning.STORM_PAD_RELEASE_SECONDS);
+    }
+  }
+
+  /** プリズムストームの締め: 主和音をかき鳴らすベル + 低い主音のマリンバ（6 節 stormFinale） */
+  private playStormFinale(level: number): void {
+    const context = this.requireContext();
+    const now = context.currentTime;
+    const safeLevel = Math.max(1, Math.floor(finiteOr(level, 1)));
+    // 上は STORM_TOP_MIDI で頭打ちなので、回を追うごとに下へ 1 オクターブ広げる
+    const extraOctaves = Math.min(safeLevel - 1, Tuning.STORM_FINALE_MAX_EXTRA_OCTAVES);
+    const notes = chordLadder(
+      Tuning.STORM_FINALE_START_MIDI - 12 * extraOctaves,
+      Tuning.STORM_FINALE_CHORD_SEMITONES,
+      Tuning.STORM_FINALE_OCTAVES + extraOctaves,
+    );
+    const decayScale = Tuning.STORM_FINALE_DECAY_SCALE * (1 + 0.1 * Math.min(safeLevel - 1, 4));
+    notes.forEach((midi, index) => {
+      const startTime = now + index * Tuning.STORM_FINALE_STEP_SECONDS;
+      const progress = notes.length > 1 ? index / (notes.length - 1) : 0.5;
+      const voice = this.createVoice(startTime, (2 * progress - 1) * Tuning.MILESTONE_PAN_WIDTH);
+      voice.output.gain.value = Tuning.VOICE_GAIN * Tuning.STORM_FINALE_GAIN;
+      this.addBell(voice, { startTime, frequency: midiToFrequency(midi), weight: 1, decayScale, brightness: 1 });
+      this.finishVoice(voice);
+    });
+
+    const bass = this.createVoice(now, 0);
+    bass.output.gain.value = Tuning.VOICE_GAIN * Tuning.STORM_FINALE_BASS_GAIN;
+    this.addMarimba(bass, {
+      startTime: now,
+      frequency: midiToFrequency(Tuning.STORM_FINALE_BASS_MIDI),
+      midi: Tuning.STORM_FINALE_BASS_MIDI,
+      weight: 1,
+      decayScale: 1.6,
+      brightness: 1,
+      fundamentalDecayScale: 1,
+    });
+    this.finishVoice(bass);
+  }
+
   /** 浮遊生物を驚かせたときの種類ごとの効果音（architecture.md 6 節 creature*） */
   private playCreature(event: CreatureEvent): void {
     const context = this.requireContext();
@@ -1147,11 +1253,11 @@ export class PrismAudioEngine implements AudioEngine {
     }
   }
 
-  private releaseVoice(voice: Voice): void {
+  private releaseVoice(voice: Voice, fadeSeconds: number = Tuning.VOICE_STEAL_FADE_SECONDS): void {
     const context = this.requireContext();
     voice.isReleasing = true;
     const now = context.currentTime;
-    const fadeEnd = now + Tuning.VOICE_STEAL_FADE_SECONDS;
+    const fadeEnd = now + fadeSeconds;
     holdParam(voice.output.gain, now);
     voice.output.gain.linearRampToValueAtTime(0, fadeEnd);
     // 未来に鳴る予定の声（グリッサンド）も、開始後に止めて ended を確実に発火させる
@@ -1314,6 +1420,22 @@ function holdParam(param: AudioParam, time: number): void {
   const currentValue = param.value;
   param.cancelScheduledValues(time);
   param.setValueAtTime(currentValue, time);
+}
+
+/** 開始音から和音の構成音（主音からの半音、昇順に並べ替える）をオクターブごとに積んだ音列。STORM_TOP_MIDI を超える音は除く */
+function chordLadder(startMidi: number, semitones: readonly number[], octaves: number): number[] {
+  const sorted = [...semitones].sort((a, b) => a - b);
+  const notes: number[] = [];
+  for (let octave = 0; octave < octaves; octave++) {
+    for (const semitone of sorted) {
+      const midi = startMidi + octave * 12 + semitone;
+      if (midi <= Tuning.STORM_TOP_MIDI) notes.push(midi);
+    }
+  }
+  // 最後に 1 つ上の主音で解決する
+  const top = startMidi + octaves * 12;
+  if (top <= Tuning.STORM_TOP_MIDI) notes.push(top);
+  return notes;
 }
 
 function panForX(x: number): number {

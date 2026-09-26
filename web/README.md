@@ -63,6 +63,23 @@ pnpm build    # tsc --noEmit → vite build
 | `PRISM_CHAIN_INTERVAL_MS` | 45 | 連鎖ポップの間隔 |
 | `SHAKE_MILESTONE_DURATION_MS` / `_AMPLITUDE_PX` | 260 / 6 | マイルストーン時の画面シェイクの尺・強さ |
 
+#### プリズムストーム（`storm.ts`、`docs/architecture.md` 3.4.1）
+
+開発ビルドでは `?pops=990` のように累計の初期値を入れると、予告とストームをすぐ確かめられる。
+
+| 定数 | 既定値 | 効き方 |
+|---|---|---|
+| `STORM_EVERY` | 1000 | 累計でこの個数ごとにストーム。× ボタンの進捗リング 1 周ぶん |
+| `STORM_ANTICIPATION_POPS` / `STORM_ANTICIPATION_PRISM` | 100 / 0.35 | 予告を始める手前の個数と、予告の背景の虹色の強さ |
+| `STORM_BASE_DURATION_MS` / `_DURATION_PER_LEVEL_MS` | 12000 / 2000 | 持続時間と、回を追うごとの延長（`STORM_MAX_SCALING_LEVEL` = 5 回目で頭打ち） |
+| `STORM_WAVE_INTERVAL_MS` / `_PER_LEVEL_MS` / `_MIN_MS` | 1800 / 150 / 1200 | 波（プリズムバースト）の間隔。点滅にならないよう 1.2s 未満にしない |
+| `STORM_SPAWN_BOOST` / `_PER_LEVEL` | 1.4 / 0.1 | ストーム中の泡の湧く量の倍率 |
+| `STORM_SCATTER_AT` | 0.65 | 生き物が中央から散るタイミング（進行度） |
+| `STORM_GATHER_RADIUS_RATIO` | 0.22（画面短辺比） | 生き物が集まる輪の半径 |
+| `STORM_CREATURE_GLOW` / `_PER_LEVEL` | 0.55 / 0.08 | ストーム中の生き物の光 |
+| `STORM_FINALE_RADIUS_RATIO` | 0.75（画面対角線比） | 締めの輪の半径。残りの泡をすべて連鎖させる |
+| `STORM_SHAKE_AMPLITUDE_PX` | 10 | 開始・締めの揺れ（「視差効果を減らす」では揺らさない） |
+
 ### しぶき粒子・エフェクト（`effects.ts`）
 
 | 定数 | 既定値 | 効き方 |

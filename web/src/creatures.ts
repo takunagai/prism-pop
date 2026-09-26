@@ -112,6 +112,11 @@ const STARTLE_ACTIVE_S = 3;
 const SPIN_BOOST_TAU_S = 1;
 /** 反転の途中で横幅が 0 にならないようにする下限（描画と当たり判定の 0 除算を避ける） */
 const MIN_FLIP_SCALE = 0.03;
+/** 集まる輪: 持ち場へ寄る速さ（1/秒）・最高速度（画面短辺比 / 秒）・速度の追従の速さ（1/秒）・輪の回る速さ（ラジアン / 秒） */
+const GATHER_RATE = 1.2;
+const GATHER_MAX_SPEED = 0.35;
+const GATHER_FOLLOW = 2.5;
+const GATHER_ORBIT_SPEED = 0.12;
 
 export interface Creature {
   readonly spec: CreatureSpec;
@@ -159,9 +164,20 @@ export interface CreaturePose {
   visibility: number;
 }
 
+/** プリズムストーム中に生き物が集まる輪（CSS px） */
+export interface CreatureGather {
+  centerX: number;
+  centerY: number;
+  radiusPx: number;
+}
+
 export interface CreatureField {
   creatures: Creature[];
   poses: CreaturePose[];
+  /** 集まる輪。null なら通常の泳ぎ */
+  gather: CreatureGather | null;
+  /** 光の下限 0..1（プリズムストーム中に全員を光らせる） */
+  glowFloor: number;
 }
 
 function randomRange(min: number, max: number): number {
@@ -255,7 +271,20 @@ export function createCreatureField(): CreatureField {
   return {
     creatures,
     poses: creatures.map((c) => ({ index: c.index, centerX: 0, centerY: 0, halfWidth: 0, halfHeight: 0, rotation: 0, glow: 0, visibility: 1 })),
+    gather: null,
+    glowFloor: 0,
   };
+}
+
+/** 逃げ去って姿を消している生き物を画面外から呼び戻し、逃走も解く（プリズムストームの開始時） */
+export function summonCreatures(field: CreatureField, width: number, height: number): void {
+  for (const creature of field.creatures) {
+    if (creature.isHidden) {
+      creature.isHidden = false;
+      respawn(creature, width, height);
+    }
+    creature.isFleeing = false;
+  }
 }
 
 export function updateCreatures(field: CreatureField, dtMs: number, timeSec: number, width: number, height: number): void {
@@ -282,6 +311,26 @@ export function updateCreatures(field: CreatureField, dtMs: number, timeSec: num
     creature.boostVy *= boostDecay;
     creature.spinBoost *= Math.exp(-dt / SPIN_BOOST_TAU_S);
     creature.spin += (creature.spinSpeed + creature.spinBoost) * dt;
+
+    // 集まる輪: 輪の上の持ち場（ゆっくり回る）へ向かう速度になるよう、上乗せ速度をなめらかに寄せる
+    const gather = field.gather;
+    if (gather) {
+      const angle = (creature.index / field.creatures.length) * Math.PI * 2 + timeSec * GATHER_ORBIT_SPEED;
+      const toX = (gather.centerX + Math.cos(angle) * gather.radiusPx) / width - creature.x;
+      const toY = (gather.centerY + Math.sin(angle) * gather.radiusPx) / height - creature.y;
+      let desiredVx = toX * GATHER_RATE;
+      let desiredVy = toY * GATHER_RATE;
+      // 画面外から戻るときに速すぎないよう、px/秒で頭打ちにする
+      const maxSpeedPx = Math.min(width, height) * GATHER_MAX_SPEED;
+      const speedPx = Math.hypot(desiredVx * width, desiredVy * height);
+      if (speedPx > maxSpeedPx) {
+        desiredVx *= maxSpeedPx / speedPx;
+        desiredVy *= maxSpeedPx / speedPx;
+      }
+      const follow = 1 - Math.exp(-dt * GATHER_FOLLOW);
+      creature.boostVx += (desiredVx - creature.vx - creature.boostVx) * follow;
+      creature.boostVy += (desiredVy - creature.vy - creature.boostVy) * follow;
+    }
 
     const { mx, my } = marginFor(spec, width, height);
     const isOutside = creature.x < -mx - 0.01 || creature.x > 1 + mx + 0.01 || creature.y < -my - 0.01 || creature.y > 1 + my + 0.01;
@@ -342,7 +391,7 @@ export function updateCreatures(field: CreatureField, dtMs: number, timeSec: num
     pose.halfWidth = half * squashScale * (1 + spec.pulseX * pulse + flapWidth) * flipScale;
     pose.halfHeight = half * squashScale * (1 + spec.pulseY * pulse + flapHeight);
     pose.rotation = rotation;
-    pose.glow = glow;
+    pose.glow = Math.max(glow, field.glowFloor);
     pose.visibility = 1;
   }
 }

@@ -21,6 +21,7 @@ web/
     music.ts       スケール・音程決定・度数→色（音と視覚の共通定義）   ← メインが作成
     bubbles.ts     泡のシミュレーション（描画非依存の純粋な状態）
     creatures.ts   浮遊生物の動き・驚きの反応・当たり判定（描画非依存の純粋な状態）と画像の読み込み
+    storm.ts       プリズムストーム（累計 pop 数・予告・進行）の純粋な状態（3.4.1）
     effects.ts     しぶき粒子・リング・波紋・ミス波紋（p5 canvas に描く）
     field.ts       背景の色ブロブの時間関数（2D と GL で同じ背景を出すための共通定義）
     quality.ts     適応型画質（standard / rich）の判定ロジック（純粋関数 + 小さな状態）
@@ -50,7 +51,12 @@ gate（導入オーバーレイ「触れて、はじけさせて」）
   └ 最初の pointerdown → audio.start()（resume を待たない）→ play
       （その pointerdown が泡に当たっていれば、そのまま 1 個目を割る）
 play
+  └ 右上の × ボタン / Esc キー → audio.stopAll()（鳴っている音をフェードして止める）
+      → コンボ・energy・連鎖の予約をリセット → gate（タイトルを再表示。泡と生き物は動き続ける）
 ```
+
+- × ボタンは play 中だけ表示する。ボタン上の pointerdown は泡・生き物の判定に渡さない
+- gate では同じ右上の位置に ? ボタンを置き、遊び方のダイアログ（`<dialog>`）を開く。閉じるボタン・Esc・ダイアログの外側のタップで閉じる。ボタン上とダイアログ表示中の pointerdown はゲーム開始に使わない
 
 ### 3.2 泡（1 個ごと）
 
@@ -80,6 +86,31 @@ energy（0..1）: pop ごとに +ENERGY_PER_POP、毎秒 ENERGY_DECAY で減衰�
 - 最後に割った泡の位置から虹色の輪が広がる（600ms、半径は画面対角線の 0.5 まで）
 - 輪が通過した泡を、通過順に 45ms 間隔で連鎖的に割る（kind=`chain`。コンボも加算する）
 - 画面に軽い揺れ（`SHAKE_MILESTONE`）、背景のフラッシュ
+- プリズムストーム（3.4.1）の最中は、コンボによるプリズムバーストを起こさない（ストームの波と重なって騒がしくなるため）
+
+#### 3.4.1 プリズムストーム（長く遊んだご褒美）
+
+累計で `STORM_EVERY`（1000）個割るたびに、プリズムバーストが長く続く派手な演出が起きる。数字は画面に出さない（隠しご褒美）。遊び方には匂わせの一文だけ置く。状態は `storm.ts`。
+
+```
+累計 pop 数（tap・swipe・chain すべて。タイトルへ戻っても保持し、タブを閉じたらリセット）
+  ├ 次の閾値の手前 STORM_ANTICIPATION_POPS（100）個 → 予告: 背景の色がゆっくり揺らぎ、閾値に近づくほど明るくなる
+  └ 閾値（1000 の倍数）に達する → ストーム開始（level = 何回目か）
+      ストーム中に次の閾値に達したら、終わってから次を始める
+ストーム（durationMs = 12s + 2s ×（level−1）、level 5 で頭打ち）
+  開始  : audio.stormStart(level, 秒)、大きめの揺れ、姿を消している生き物を呼び戻す
+  継続  : 背景が虹色に巡る / 泡の湧く量を ×(1.4 + 0.1×(level−1)) / 生き物が光りながら画面中央の輪へ集まる
+          一定間隔（1.8s − 0.15s ×（level−1）、下限 1.2s）でランダムな泡からプリズムバーストの波（輪 + 連鎖）
+  65% 経過: 生き物が中央から散る（種類ごとの驚きの反応。エイ・グラスオクトパスは逃げ去る）
+  締め  : 収まり（最後の 2s）の入り口で audio.stormFinale(level)、画面中央から画面全体を覆う輪で残りの泡を連鎖させる、大きめの揺れ
+          以降は波を起こさず、2s かけて強さが 0 に戻ったら終了
+```
+
+- 回を追うごとに（level 5 まで）持続時間・波の頻度・泡の量・生き物の光が少しずつ増す
+- 立ち上がり 1.2s・収まり 2s で強さ（0..1）をなめらかに変え、背景・energy・生き物の光はこの強さに従う
+- 点滅はしない（波の間隔は 1.2s 以上）。`prefers-reduced-motion` のときはストームの揺れを出さない
+- タイトルへ戻るとストームは打ち切る（累計は保持）
+- 進捗リング: play 中の × ボタンの縁に、次のストームまでの進み具合を虹色の円弧で描く（1 周 = `STORM_EVERY` 個、12 時から時計回り）。数字は出さない。予告の区間では円弧が光り、ストーム中は 1 周いっぱいのままゆっくり脈打つ。終わると現在の端数に戻る
 
 ### 3.5 入力
 
@@ -103,6 +134,9 @@ energy（0..1）: pop ごとに +ENERGY_PER_POP、毎秒 ENERGY_DECAY で減衰�
 | comboMilestone | level(=combo/8),x,y | プリズムバースト（3.4）+ 揺れ + 背景フラッシュ | ベルのグリッサンド和音（F リディアンの 1-3-5-#4-7 を上昇）、level で音域と長さを伸ばす |
 | comboEnd | combo | 背景がゆっくり元の色へ戻る | combo≥3: 主和音の柔らかい余韻（パッド + 高いベル 1 音） |
 | setEnergy | energy 0..1（毎フレーム） | 背景ブロブの明るさ・色相（バイオレット→明るい紫＋ライムの光）が追従 | パッド（主音 + 5 度）の音量・フィルタが追従。energy 0 で無音 |
+| stormStart | level, durationSeconds | プリズムストーム開始（3.4.1） | 速い上昇グリッサンド + パッドを持続時間いっぱい膨らませる |
+| stormFinale | level | ストームの締め（全画面の連鎖） | 主和音（1-3-5-7）を 3 オクターブにわたってかき鳴らすベル + 低いマリンバの主音。level で音域と長さを伸ばす |
+| stopAll | ─ | タイトルへ戻る（3.1） | 鳴っている声を `STOP_ALL_FADE_SECONDS` でフェードして止め、パッドの膨らみも 0 へ。AudioContext は止めない（次の開始で即座に鳴らすため） |
 | （毎フレーム 1 回） | getAmp() 0..1 | グロー層の明るさ脈動、泡の膜のきらめき量 | ─（音→視覚の逆流線はこの 1 本のみ） |
 
 ## 5. AudioEngine 契約（`web/src/audio/engine.ts` が正本の写し）
@@ -135,6 +169,9 @@ export interface AudioEngine {
   pop(event: PopEvent): void;
   miss(x: number, y: number): void;
   creature(event: CreatureEvent): void;
+  stormStart(level: number, durationSeconds: number): void; // プリズムストーム開始（3.4.1）
+  stormFinale(level: number): void; // プリズムストームの締め
+  stopAll(): void;                  // タイトルへ戻るとき。鳴っている音をフェードして止める
   comboMilestone(level: number, x: number, y: number): void;
   comboEnd(combo: number): void;
   setEnergy(energy: number): void; // 毎フレーム呼ばれてよい（内部で平滑化）
@@ -165,6 +202,12 @@ export interface AudioEngine {
 | creatureJellyfish | ビブラート付きの柔らかい上昇サイン（A4→C5）を傘の拍動に合わせて 2 回 | 「ぽよん」。2 回目は弱く |
 
 - creature* の音程はすべて F リディアンの構成音。音量は泡の pop より控えめ（`CREATURE_GAIN`）
+
+| 名前 | 方式 | パラメータ写像 |
+|---|---|---|
+| stormRise | bell を 28ms 間隔で和声音の階段（F4 から 2 オクターブ + level）を駆け上がる | pan を左右に往復させる |
+| stormPad | pad の膨らみ（`padSwellGain`）を持続時間いっぱい保ち、最後に解放 | 1.2s で立ち上がり、終了時に余韻として減衰 |
+| stormFinale | bell で主和音 1-3-5-7 を F4 から 3 オクターブ、22ms 間隔でかき鳴らす + marimba の F3 | level 2 以降は下へ 1 オクターブ（F3 から）広げ、減衰を伸ばす（上は MIDI 100 で頭打ち） |
 
 - マスター: 全音源 → `fxIn` → dry / wet（生成 IR の Convolver、2.8s、明るめ）→ DynamicsCompressor（リミッタ代用）→ Analyser → destination
 - 同時発音上限 `MAX_VOICES = 28`。超えたら最も古い声を 30ms でフェードして奪う
@@ -283,3 +326,4 @@ standard 内でもしぶき粒子の上限を fps で自動調整する（1200 �
 - 音階・和声音・度数色: `web/src/music.ts`
 - README にノブ一覧表（定数名・意味・既定値・体感への効き方）を置く
 - 開発用クエリ: `?mute`（無音）、`?quality=standard|rich`（画質固定）、`?debug`（画面に診断: fps・画質段・音声状態・`isSecureContext`・直近のエラー）
+- 開発ビルドのみ: `?pops=N`（累計 pop 数の初期値。プリズムストームと予告の確認用。例: `?pops=990`）
