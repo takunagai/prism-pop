@@ -229,6 +229,20 @@ strong {
   outline-offset: 2px;
 }
 
+/* 全画面ボタン: ? / × の左隣（ボタン 44px + 間隔 8px） */
+#fullscreen-button {
+  right: calc(max(12px, env(safe-area-inset-right)) + 52px);
+}
+
+#fullscreen-button .icon-exit,
+#fullscreen-button.is-fullscreen .icon-enter {
+  display: none;
+}
+
+#fullscreen-button.is-fullscreen .icon-exit {
+  display: block;
+}
+
 /* × ボタンの縁の進捗リング（次のプリズムストームまで。1 周 = 1000 個）。12 時から時計回りに伸びる */
 .corner-button .storm-ring {
   position: absolute;

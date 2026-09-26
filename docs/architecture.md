@@ -56,6 +56,10 @@ play
 ```
 
 - × ボタンは play 中だけ表示する。ボタン上の pointerdown は泡・生き物の判定に渡さない
+- 全画面ボタン: ? / × の左隣に常に置き、押すたびに全画面（Fullscreen API、`navigationUI: "hide"`）に入る・抜けるを切り替える。gate・play のどちらでも使え、状態はタイトルへ戻っても変えない
+  - 全画面中の Esc はブラウザが全画面の解除に使うので、その Esc ではタイトルへ戻らない（もう一度押すと戻る）
+  - 全画面 API が無い端末（iPhone の Safari）と、ホーム画面から起動したとき（`display-mode: fullscreen / standalone`）はボタンを出さない
+  - iPhone は「ホーム画面に追加」で枠なしにする: `manifest.webmanifest`（`display: fullscreen`）と iOS 用の meta（`apple-mobile-web-app-capable`、ステータスバーは `black-translucent`）。アイコンは `public/icon.svg` から書き出した PNG（180 / 192 / 512）
 - gate では同じ右上の位置に ? ボタンを置き、遊び方のダイアログ（`<dialog>`）を開く。閉じるボタン・Esc・ダイアログの外側のタップで閉じる。ボタン上とダイアログ表示中の pointerdown はゲーム開始に使わない
 
 ### 3.2 泡（1 個ごと）

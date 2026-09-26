@@ -1,0 +1,17 @@
+{
+  "name": "Prism Pop",
+  "short_name": "Prism Pop",
+  "description": "虹色の泡を割って音を鳴らす、触れて楽しむ作品",
+  "lang": "ja",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "background_color": "#0d0a1f",
+  "theme_color": "#0d0a1f",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -102,6 +102,7 @@ const exitButtonEl = document.querySelector<HTMLButtonElement>("#exit-button")!;
 const helpButtonEl = document.querySelector<HTMLButtonElement>("#help-button")!;
 const helpDialogEl = document.querySelector<HTMLDialogElement>("#help-dialog")!;
 const helpCloseEl = document.querySelector<HTMLButtonElement>("#help-close")!;
+const fullscreenButtonEl = document.querySelector<HTMLButtonElement>("#fullscreen-button")!;
 const stormRingArcEl = document.querySelector<SVGCircleElement>("#exit-button .storm-ring-arc")!;
 const debugOverlayEl = document.querySelector<HTMLPreElement>("#debug-overlay")!;
 
@@ -332,6 +333,56 @@ function returnToTitle(): void {
   creatureField.gather = null;
   creatureField.glowFloor = 0;
   updateStormRing();
+}
+
+// ---- 全画面（3.1） ----
+// 古い Safari（iPad）は webkit 接頭辞だけを持つ。iPhone はどちらも無いのでボタンを出さない（ホーム画面に追加で枠なしにする）
+type WebkitFullscreenDocument = Document & {
+  webkitFullscreenEnabled?: boolean;
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => void;
+};
+type WebkitFullscreenElement = HTMLElement & { webkitRequestFullscreen?: () => void };
+const fullscreenDocument = document as WebkitFullscreenDocument;
+/** ホーム画面から起動している（すでに枠が無い）か */
+const isStandaloneDisplay =
+  window.matchMedia?.("(display-mode: fullscreen), (display-mode: standalone)").matches === true ||
+  (navigator as Navigator & { standalone?: boolean }).standalone === true;
+const canToggleFullscreen =
+  !isStandaloneDisplay && (document.fullscreenEnabled === true || fullscreenDocument.webkitFullscreenEnabled === true);
+/** 全画面を Esc で抜けた直後の keydown をタイトルへ戻る操作と取り違えないための時刻 */
+let lastFullscreenExitMs = -Infinity;
+
+function currentFullscreenElement(): Element | null {
+  return document.fullscreenElement ?? fullscreenDocument.webkitFullscreenElement ?? null;
+}
+
+function toggleFullscreen(): void {
+  try {
+    if (currentFullscreenElement()) {
+      if (typeof document.exitFullscreen === "function") void document.exitFullscreen().catch(recordFullscreenError);
+      else fullscreenDocument.webkitExitFullscreen?.();
+      return;
+    }
+    const root = document.documentElement as WebkitFullscreenElement;
+    if (typeof root.requestFullscreen === "function") void root.requestFullscreen({ navigationUI: "hide" }).catch(recordFullscreenError);
+    else root.webkitRequestFullscreen?.();
+  } catch (error) {
+    recordFullscreenError(error);
+  }
+}
+
+function recordFullscreenError(error: unknown): void {
+  lastError = `fullscreen: ${error instanceof Error ? error.message : String(error)}`;
+}
+
+function syncFullscreenButton(): void {
+  const isFullscreen = currentFullscreenElement() !== null;
+  if (!isFullscreen) lastFullscreenExitMs = performance.now();
+  const label = isFullscreen ? "全画面を終わる" : "全画面にする";
+  fullscreenButtonEl.classList.toggle("is-fullscreen", isFullscreen);
+  fullscreenButtonEl.setAttribute("aria-label", label);
+  fullscreenButtonEl.title = label;
 }
 
 // ---- 遊び方のダイアログ（gate のときだけ開ける） ----
@@ -692,8 +743,16 @@ new P5((p: P5) => {
       if (e.target === helpDialogEl) closeHelp();
     });
     window.addEventListener("keydown", (e: KeyboardEvent) => {
-      if (e.key === "Escape") returnToTitle();
+      if (e.key !== "Escape") return;
+      // 全画面中の Esc はブラウザが全画面の解除に使う。その Esc でタイトルへは戻らない（もう一度押すと戻る）
+      if (currentFullscreenElement() || performance.now() - lastFullscreenExitMs < 500) return;
+      returnToTitle();
     });
+
+    fullscreenButtonEl.hidden = !canToggleFullscreen;
+    fullscreenButtonEl.addEventListener("click", toggleFullscreen);
+    document.addEventListener("fullscreenchange", syncFullscreenButton);
+    document.addEventListener("webkitfullscreenchange", syncFullscreenButton);
   };
 
   p.draw = () => {
