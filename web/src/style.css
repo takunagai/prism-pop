@@ -149,6 +149,36 @@ strong {
   text-shadow: 0 0 24px rgba(124, 77, 255, 0.8);
 }
 
+/* 開始の促し: タイトル・キャッチより一段小さく離して置き、登場後にゆっくり明滅させる */
+#gate-prompt {
+  margin: clamp(24px, 6vh, 56px) 0 0;
+  /* letter-spacing の末尾余白を打ち消して視覚中心を揃える */
+  padding-left: 0.32em;
+  font-size: clamp(14px, 3.4vw, 18px);
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: #e6e0ff;
+  text-shadow: 0 0 16px rgba(124, 77, 255, 0.9);
+  animation:
+    gate-rise 0.9s ease-out 0.9s both,
+    prompt-blink 2.8s ease-in-out 1.8s infinite;
+}
+
+/* 入力手段で文言を切り替える: マウスは Click、タッチ主体（スマホ・タブレット）は Tap */
+.prompt-touch {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .prompt-mouse {
+    display: none;
+  }
+
+  .prompt-touch {
+    display: inline;
+  }
+}
+
 #debug-overlay {
   position: fixed;
   top: max(8px, env(safe-area-inset-top));
@@ -188,9 +218,20 @@ strong {
   }
 }
 
+@keyframes prompt-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   #gate-title,
-  #gate-text {
+  #gate-text,
+  #gate-prompt {
     animation: none;
   }
 }
