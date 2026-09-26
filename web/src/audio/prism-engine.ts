@@ -7,7 +7,7 @@
 // （値の import にすると循環 import で TDZ になる）
 // ============================================================
 
-import type { AudioEngine, PopEvent } from "./engine";
+import type { AudioEngine, CreatureEvent, PopEvent } from "./engine";
 import { midiToFrequency, milestoneGlissando, ROOT_MIDI } from "../music";
 import * as Tuning from "./audio-tuning";
 
@@ -144,6 +144,15 @@ export class PrismAudioEngine implements AudioEngine {
       this.playMiss(x);
     } catch (error) {
       this.recordError("miss", error);
+    }
+  }
+
+  creature(event: CreatureEvent): void {
+    if (!this.canPlay()) return;
+    try {
+      this.playCreature(event);
+    } catch (error) {
+      this.recordError("creature", error);
     }
   }
 
@@ -661,6 +670,255 @@ export class PrismAudioEngine implements AudioEngine {
       brightness: 1,
     });
     this.finishVoice(voice);
+  }
+
+  /** 浮遊生物を驚かせたときの種類ごとの効果音（architecture.md 6 節 creature*） */
+  private playCreature(event: CreatureEvent): void {
+    const context = this.requireContext();
+    const startTime = context.currentTime;
+    const pan = panForX(clampUnit(finiteOr(event.x, 0.5)));
+
+    // クシクラゲは 1 音ごとに定位を散らすので声を分ける
+    if (event.species === "ctenophore") {
+      Tuning.CREATURE_CTENOPHORE_MIDIS.forEach((midi, index) => {
+        const noteStart = startTime + index * Tuning.CREATURE_CTENOPHORE_STEP_SECONDS;
+        const spread = (index % 2 === 0 ? -1 : 1) * Tuning.CREATURE_CTENOPHORE_PAN_SPREAD;
+        const voice = this.createVoice(noteStart, pan + spread);
+        voice.output.gain.value = Tuning.VOICE_GAIN * Tuning.CREATURE_GAIN;
+        this.addBell(voice, {
+          startTime: noteStart,
+          frequency: midiToFrequency(midi),
+          weight: Tuning.CREATURE_CTENOPHORE_BELL_WEIGHT,
+          decayScale: Tuning.CREATURE_CTENOPHORE_DECAY_SCALE,
+          brightness: Tuning.CREATURE_CTENOPHORE_BRIGHTNESS,
+        });
+        this.finishVoice(voice);
+      });
+      return;
+    }
+
+    const voice = this.createVoice(startTime, pan);
+    voice.output.gain.value = Tuning.VOICE_GAIN * Tuning.CREATURE_GAIN;
+    switch (event.species) {
+      case "ray":
+        this.addRaySound(voice, startTime);
+        break;
+      case "clione":
+        this.addClioneSound(voice, startTime);
+        break;
+      case "octopus":
+        this.addOctopusSound(voice, startTime);
+        break;
+      case "seadragon":
+        this.addSeadragonSound(voice, startTime);
+        break;
+      case "jellyfish":
+        this.addJellyfishSound(voice, startTime);
+        break;
+    }
+    this.finishVoice(voice);
+  }
+
+  /** エイ: 翼の風切り 2 回 + 柔らかいマリンバ */
+  private addRaySound(voice: Voice, startTime: number): void {
+    for (let beat = 0; beat < 2; beat++) {
+      this.addNoiseSweep(voice, {
+        startTime: startTime + beat * Tuning.CREATURE_RAY_WHOOSH_GAP_SECONDS,
+        duration: Tuning.CREATURE_RAY_WHOOSH_SECONDS,
+        fromHz: Tuning.CREATURE_RAY_WHOOSH_FROM_HZ,
+        toHz: Tuning.CREATURE_RAY_WHOOSH_TO_HZ,
+        q: 1.4,
+        peak: Tuning.CREATURE_RAY_WHOOSH_GAIN * (beat === 0 ? 1 : 0.7),
+        attack: 0.08,
+        filterType: "bandpass",
+      });
+    }
+    this.addMarimba(voice, {
+      startTime,
+      frequency: midiToFrequency(Tuning.CREATURE_RAY_MIDI),
+      midi: Tuning.CREATURE_RAY_MIDI,
+      weight: Tuning.CREATURE_RAY_TONE_WEIGHT,
+      decayScale: 0.8,
+      brightness: 0.6,
+      fundamentalDecayScale: 1,
+    });
+  }
+
+  /** クリオネ: 短いベル 2 音の上昇 + 「ピッ」 */
+  private addClioneSound(voice: Voice, startTime: number): void {
+    Tuning.CREATURE_CLIONE_MIDIS.forEach((midi, index) => {
+      this.addBell(voice, {
+        startTime: startTime + index * Tuning.CREATURE_CLIONE_STEP_SECONDS,
+        frequency: midiToFrequency(midi),
+        weight: Tuning.CREATURE_CLIONE_BELL_WEIGHT,
+        decayScale: Tuning.CREATURE_CLIONE_DECAY_SCALE,
+        brightness: 0.8,
+      });
+    });
+    this.addGlide(voice, {
+      startTime,
+      fromHz: Tuning.CREATURE_CLIONE_CHIRP_FROM_HZ,
+      toHz: Tuning.CREATURE_CLIONE_CHIRP_TO_HZ,
+      glideSeconds: 0.06,
+      peak: Tuning.CREATURE_CLIONE_CHIRP_GAIN,
+      attack: 0.004,
+      decay: 0.08,
+    });
+  }
+
+  /** グラスオクトパス: 「ポコッ」2 回 + 噴射 */
+  private addOctopusSound(voice: Voice, startTime: number): void {
+    for (const bloop of Tuning.CREATURE_OCTOPUS_BLOOPS) {
+      this.addGlide(voice, {
+        startTime: startTime + bloop.delay,
+        fromHz: bloop.fromHz,
+        toHz: bloop.toHz,
+        glideSeconds: Tuning.CREATURE_OCTOPUS_BLOOP_GLIDE_SECONDS,
+        peak: bloop.gain,
+        attack: 0.005,
+        decay: Tuning.CREATURE_OCTOPUS_BLOOP_DECAY_SECONDS,
+      });
+    }
+    this.addNoiseSweep(voice, {
+      startTime,
+      duration: Tuning.CREATURE_OCTOPUS_JET_SECONDS,
+      fromHz: Tuning.CREATURE_OCTOPUS_JET_FROM_HZ,
+      toHz: Tuning.CREATURE_OCTOPUS_JET_TO_HZ,
+      q: 0.7,
+      peak: Tuning.CREATURE_OCTOPUS_JET_GAIN,
+      attack: 0.02,
+      filterType: "lowpass",
+    });
+  }
+
+  /** リーフィーシードラゴン: 不規則なカサカサ + ミュートしたマリンバ */
+  private addSeadragonSound(voice: Voice, startTime: number): void {
+    for (let index = 0; index < Tuning.CREATURE_SEADRAGON_RUSTLE_COUNT; index++) {
+      this.addNoiseBurst(voice, {
+        startTime: startTime + Math.random() * Tuning.CREATURE_SEADRAGON_RUSTLE_SPREAD_SECONDS,
+        duration: 0.015 + Math.random() * 0.015,
+        centerFrequency:
+          Tuning.CREATURE_SEADRAGON_RUSTLE_MIN_HZ +
+          Math.random() * (Tuning.CREATURE_SEADRAGON_RUSTLE_MAX_HZ - Tuning.CREATURE_SEADRAGON_RUSTLE_MIN_HZ),
+        q: 2,
+        peak: Tuning.CREATURE_SEADRAGON_RUSTLE_GAIN * (0.6 + 0.4 * Math.random()),
+        filterType: "bandpass",
+      });
+    }
+    this.addMarimba(voice, {
+      startTime,
+      frequency: midiToFrequency(Tuning.CREATURE_SEADRAGON_MIDI),
+      midi: Tuning.CREATURE_SEADRAGON_MIDI,
+      weight: Tuning.CREATURE_SEADRAGON_TONE_WEIGHT,
+      decayScale: Tuning.CREATURE_SEADRAGON_TONE_DECAY_SCALE,
+      brightness: 1,
+      fundamentalDecayScale: 1,
+    });
+  }
+
+  /** クラゲ: 揺れる柔らかい上昇サイン「ぽよん」を 2 回 */
+  private addJellyfishSound(voice: Voice, startTime: number): void {
+    Tuning.CREATURE_JELLYFISH_GAINS.forEach((gain, index) => {
+      this.addGlide(voice, {
+        startTime: startTime + index * Tuning.CREATURE_JELLYFISH_GAP_SECONDS,
+        fromHz: midiToFrequency(Tuning.CREATURE_JELLYFISH_FROM_MIDI),
+        toHz: midiToFrequency(Tuning.CREATURE_JELLYFISH_TO_MIDI),
+        glideSeconds: Tuning.CREATURE_JELLYFISH_GLIDE_SECONDS,
+        peak: gain,
+        attack: Tuning.CREATURE_JELLYFISH_ATTACK_SECONDS,
+        decay: Tuning.CREATURE_JELLYFISH_DECAY_SECONDS,
+        vibratoHz: Tuning.CREATURE_JELLYFISH_VIBRATO_HZ,
+        vibratoCents: Tuning.CREATURE_JELLYFISH_VIBRATO_CENTS,
+      });
+    });
+  }
+
+  /** 周波数が滑らかに動くサイン 1 本（指数カーブで移動）。任意でビブラートをかける */
+  private addGlide(
+    voice: Voice,
+    options: {
+      startTime: number;
+      fromHz: number;
+      toHz: number;
+      glideSeconds: number;
+      peak: number;
+      attack: number;
+      decay: number;
+      vibratoHz?: number;
+      vibratoCents?: number;
+    },
+  ): void {
+    const context = this.requireContext();
+    const { startTime, fromHz, toHz, glideSeconds, peak, attack, decay } = options;
+    const oscillator = context.createOscillator();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(fromHz, startTime);
+    oscillator.frequency.exponentialRampToValueAtTime(toHz, startTime + glideSeconds);
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(peak, startTime + attack);
+    gain.gain.exponentialRampToValueAtTime(Tuning.MIN_GAIN, startTime + attack + decay);
+    oscillator.connect(gain);
+    gain.connect(voice.input);
+    const stopTime = startTime + attack + decay + SOURCE_TAIL_SECONDS;
+    oscillator.start(startTime);
+    oscillator.stop(stopTime);
+    voice.nodes.push(oscillator, gain);
+    voice.sources.push({ node: oscillator, stopTime });
+
+    const vibratoCents = options.vibratoCents ?? 0;
+    if (vibratoCents <= 0) return;
+    const vibrato = context.createOscillator();
+    vibrato.frequency.value = options.vibratoHz ?? Tuning.BELL_VIBRATO_HZ;
+    const depth = context.createGain();
+    depth.gain.value = vibratoCents;
+    vibrato.connect(depth);
+    depth.connect(oscillator.detune);
+    vibrato.start(startTime);
+    vibrato.stop(stopTime);
+    voice.nodes.push(vibrato, depth);
+    voice.sources.push({ node: vibrato, stopTime });
+  }
+
+  /** フィルタの周波数が動く帯域ノイズ（風切り・噴射）。共有ノイズをループさせて長さの制約を外す */
+  private addNoiseSweep(
+    voice: Voice,
+    options: {
+      startTime: number;
+      duration: number;
+      fromHz: number;
+      toHz: number;
+      q: number;
+      peak: number;
+      attack: number;
+      filterType: BiquadFilterType;
+    },
+  ): void {
+    const context = this.requireContext();
+    const { startTime, duration, fromHz, toHz, q, peak, attack, filterType } = options;
+    if (!(peak > Tuning.MIN_GAIN * 10) || !(duration > attack)) return;
+    const buffer = this.ensureNoiseBuffer();
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    const nyquistLimit = context.sampleRate * Tuning.PARTIAL_NYQUIST_RATIO;
+    const filter = context.createBiquadFilter();
+    filter.type = filterType;
+    filter.frequency.setValueAtTime(Math.min(fromHz, nyquistLimit), startTime);
+    filter.frequency.exponentialRampToValueAtTime(Math.min(toHz, nyquistLimit), startTime + duration);
+    filter.Q.value = q;
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(peak, startTime + attack);
+    gain.gain.exponentialRampToValueAtTime(Tuning.MIN_GAIN, startTime + duration);
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(voice.input);
+    const stopTime = startTime + duration + SOURCE_TAIL_SECONDS;
+    source.start(startTime, Math.random() * buffer.duration);
+    source.stop(stopTime);
+    voice.nodes.push(source, filter, gain);
+    voice.sources.push({ node: source, stopTime });
   }
 
   /** 泡が割れる感触の要: 帯域ノイズ（大きい泡ほど低く長い）+ 上昇サイン「プッ」 */

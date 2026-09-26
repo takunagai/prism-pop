@@ -32,3 +32,4 @@
 | `PAD_SWELL_GAIN` | comboEnd の膨らみのピーク | 0.1 | 連打の後の余韻の大きさ |
 | `AMP_NORMALIZE` | getAmp の倍率 | 3.5 | 上げるとグローの脈動が大きくなる |
 | `AMP_RELEASE_PER_FRAME` | getAmp の減衰 | 0.9 | 1 に近いほど光の余韻が長い |
+| `CREATURE_GAIN` | 浮遊生物を驚かせたときの効果音の音量（VOICE_GAIN に掛ける） | 0.55 | 上げると生き物の音が泡の音と並ぶ。種類ごとの音色は `CREATURE_<種類>_*` |

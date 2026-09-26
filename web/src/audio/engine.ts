@@ -22,6 +22,17 @@ export interface PopEvent {
   kind: PopKind;
 }
 
+/** 浮遊生物の種類（creatures.ts の CREATURE_SPECS[].name と一致させる） */
+export type CreatureSpecies = "ray" | "clione" | "ctenophore" | "octopus" | "seadragon" | "jellyfish";
+
+export interface CreatureEvent {
+  species: CreatureSpecies;
+  /** 0..1（触れた位置。画面幅で正規化） */
+  x: number;
+  /** 0..1（画面高さで正規化） */
+  y: number;
+}
+
 export interface AudioEngine {
   /** ユーザー操作のハンドラ内で呼ぶ。resume() の解決を待たずに配線まで済ませ、常駐の解錠リスナーを置く */
   start(): Promise<void>;
@@ -29,6 +40,8 @@ export interface AudioEngine {
   readonly isReady: boolean;
   pop(event: PopEvent): void;
   miss(x: number, y: number): void;
+  /** 浮遊生物に触れて驚かせたとき（種類ごとの効果音） */
+  creature(event: CreatureEvent): void;
   comboMilestone(level: number, x: number, y: number): void;
   comboEnd(combo: number): void;
   /** 毎フレーム呼ばれてよい（内部で平滑化） */
@@ -44,6 +57,7 @@ export class NoopAudioEngine implements AudioEngine {
   async start(): Promise<void> {}
   pop(): void {}
   miss(): void {}
+  creature(): void {}
   comboMilestone(): void {}
   comboEnd(): void {}
   setEnergy(): void {}

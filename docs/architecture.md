@@ -20,7 +20,7 @@ web/
     tuning.ts      視覚・操作・品質の定数（一元管理）
     music.ts       スケール・音程決定・度数→色（音と視覚の共通定義）   ← メインが作成
     bubbles.ts     泡のシミュレーション（描画非依存の純粋な状態）
-    creatures.ts   浮遊生物の動き（描画非依存の純粋な状態）と画像の読み込み
+    creatures.ts   浮遊生物の動き・驚きの反応・当たり判定（描画非依存の純粋な状態）と画像の読み込み
     effects.ts     しぶき粒子・リング・波紋・ミス波紋（p5 canvas に描く）
     field.ts       背景の色ブロブの時間関数（2D と GL で同じ背景を出すための共通定義）
     quality.ts     適応型画質（standard / rich）の判定ロジック（純粋関数 + 小さな状態）
@@ -84,7 +84,8 @@ energy（0..1）: pop ごとに +ENERGY_PER_POP、毎秒 ENERGY_DECAY で減衰�
 ### 3.5 入力
 
 - Pointer Events でマウス・タッチ統一。`pointerId` ごとに追跡し、マルチタッチで同時に割れる
-- `pointerdown`: その位置の泡を割る。当たらなければ `miss`（小さな波紋 + 周囲の泡を軽く押す）
+- `pointerdown`: その位置の泡を割る。泡に当たらず浮遊生物の体に当たれば、その生き物を驚かせる（7.5.1）。どちらにも当たらなければ `miss`（小さな波紋 + 周囲の泡を軽く押す）
+  - 泡が優先（生き物は泡の奥にいる）。なぞり（swipe）では生き物は反応しない
 - ボタンを押したまま / 指を置いたまま動かす: 通過した泡を割る（kind=`swipe`。前フレーム位置との線分で当たり判定）
 - 当たり判定は見た目より甘く: 半径 + `HIT_SLOP_PX`（マウス 6px / タッチ 14px）
 - `touch-action: none`、コンテキストメニュー抑止。スクロール・ピンチでページが動かないこと
@@ -98,6 +99,7 @@ energy（0..1）: pop ごとに +ENERGY_PER_POP、毎秒 ENERGY_DECAY で減衰�
 | pop（swipe） | 同上 | 同上（しぶき少なめ） | 同上、音量 ×0.8、弾いた感じの明るめの音色 |
 | pop（chain） | 同上 | 同上 + 輪の色を虹色に | 同上、ベル寄りの音色、音量 ×0.7 |
 | miss | x,y | 小さな淡い波紋、周囲の泡を押す | ミュートしたマリンバの小さなコツ音（音程なし寄り） |
+| creature | species,x,y | 触れた位置に淡い波紋 + 生き物が種類ごとに驚く（7.5.1）。コンボ・energy には数えない | 種類ごとの効果音（6 節 creature*）、pan ∝ x |
 | comboMilestone | level(=combo/8),x,y | プリズムバースト（3.4）+ 揺れ + 背景フラッシュ | ベルのグリッサンド和音（F リディアンの 1-3-5-#4-7 を上昇）、level で音域と長さを伸ばす |
 | comboEnd | combo | 背景がゆっくり元の色へ戻る | combo≥3: 主和音の柔らかい余韻（パッド + 高いベル 1 音） |
 | setEnergy | energy 0..1（毎フレーム） | 背景ブロブの明るさ・色相（バイオレット→明るい紫＋ライムの光）が追従 | パッド（主音 + 5 度）の音量・フィルタが追従。energy 0 で無音 |
@@ -117,6 +119,14 @@ export interface PopEvent {
   kind: PopKind;
 }
 
+export type CreatureSpecies = "ray" | "clione" | "ctenophore" | "octopus" | "seadragon" | "jellyfish";
+
+export interface CreatureEvent {
+  species: CreatureSpecies;
+  x: number;      // 0..1（触れた位置）
+  y: number;      // 0..1
+}
+
 export interface AudioEngine {
   /** ユーザー操作のハンドラ内で呼ぶ。resume() の解決を待たずに配線まで済ませる。常駐の解錠リスナーを置く */
   start(): Promise<void>;
@@ -124,6 +134,7 @@ export interface AudioEngine {
   readonly isReady: boolean;
   pop(event: PopEvent): void;
   miss(x: number, y: number): void;
+  creature(event: CreatureEvent): void;
   comboMilestone(level: number, x: number, y: number): void;
   comboEnd(combo: number): void;
   setEnergy(energy: number): void; // 毎フレーム呼ばれてよい（内部で平滑化）
@@ -146,6 +157,14 @@ export interface AudioEngine {
 | missTick | marimba を強くミュート（減衰 60ms）、LPF 1.2kHz | 音量小 |
 | milestoneGliss | bell を 35ms 間隔で 1-3-5-#4-7-1' と上昇、level で 1〜2 オクターブ | pan を左右に広げる |
 | pad | 主音 + 5 度 + 9th のサイン/三角のデチューン、LPF | energy → 音量 0..0.12・LPF 400..2.4kHz。comboEnd で 1 回膨らむ |
+| creatureRay | 翼の風切り（バンドパスノイズの中心を 1.8k→0.4kHz へ下降）を 2 回 + 柔らかいマリンバ C4 | 羽ばたき 2 回ぶん。音量控えめ |
+| creatureClione | 短いベル C6→F6 を 70ms 間隔 + 上昇サインの「ピッ」 | 小さく高く、かわいく |
+| creatureCtenophore | 高音ベルの速いアルペジオ（F6-A6-C7-E7、30ms 間隔、短い減衰） | ガラスのきらめき。pan を少し散らす |
+| creatureOctopus | 下降サインの「ポコッ」2 回 + ローパスノイズの噴射（0.9k→0.2kHz） | 噴射で逃げる感触 |
+| creatureSeadragon | 高域の短いノイズを不規則に 5 回（カサカサ）+ ミュートしたマリンバ A4 | 葉が擦れて向きを変える感触 |
+| creatureJellyfish | ビブラート付きの柔らかい上昇サイン（A4→C5）を傘の拍動に合わせて 2 回 | 「ぽよん」。2 回目は弱く |
+
+- creature* の音程はすべて F リディアンの構成音。音量は泡の pop より控えめ（`CREATURE_GAIN`）
 
 - マスター: 全音源 → `fxIn` → dry / wet（生成 IR の Convolver、2.8s、明るめ）→ DynamicsCompressor（リミッタ代用）→ Analyser → destination
 - 同時発音上限 `MAX_VOICES = 28`。超えたら最も古い声を 30ms でフェードして奪う
@@ -193,7 +212,7 @@ export interface AudioEngine {
 
 ### 7.5 浮遊生物（背景の生き物）
 
-泡の奥を、半透明で幻想的な海の生き物がゆっくり漂う。空間に奥行きと「何かが棲んでいる」気配を足すための背景要素で、**操作の対象にしない**（当たり判定なし・入力に反応しない）。
+泡の奥を、半透明で幻想的な海の生き物がゆっくり漂う。空間に奥行きと「何かが棲んでいる」気配を足すための背景要素。泡のない場所で体に触れると驚く（7.5.1）が、ゲームの状態（コンボ・energy）には関わらない。
 
 - 素材: gpt-image-2 で生成した透過 PNG を 768px の WebP にした 6 枚（`web/public/creatures/`）。体そのものが半透明（不透明ピクセル 0%）
 - 種類ごとに 1 体、計 6 体。不透明度は全種共通 25%（`CREATURE_OPACITY`）、通常合成（source-over）
@@ -216,6 +235,27 @@ export interface AudioEngine {
   - standard: `#creatures` canvas に `drawImage`（回転・反転・脈動の変形のみ）
   - rich: 6 枚を 1 枚のアトラステクスチャ（3×2、プリマルチプライド α）にまとめ、シェーダで背景の直後に合成する。泡の屈折（`refracted`）でも同じ関数を評価するので、泡越しの生き物がわずかに歪んで見える
 - 画像の読み込みは非同期。読み込み完了までは生き物を描かない（失敗しても本体は動く）
+
+#### 7.5.1 驚きの反応
+
+- 当たり判定: 読み込み時に各画像の α から 64×64 のマスク（その画像の最大 α の `CREATURE_HIT_ALPHA_RATIO` 以上を体とみなし、1 マス膨らませる）を作る。タップ位置を姿勢（回転・反転・脈動）の逆変換で画像座標へ戻してマスクを引く。透明な余白では反応しない。手前（描画順が後）の生き物を優先する
+- 驚いた直後 `CREATURE_STARTLE_COOLDOWN_S` の間は再反応しない（タップは吸収し、空振りにもしない）
+- 共通の表現: ビクッと縮んでから少し膨らみ返す（減衰振動）、一瞬明るく光る（不透明度と加算の光）
+- 逃げ方は 2 通り
+  - 留まる: 瞬間的に加速（減衰）したあと、元の泳ぎに戻る
+  - 逃げ去る: 逃走速度を保ったまま画面外へ出て、`CREATURE_FLEE_RETURN_MIN_S`〜`_MAX_S` 秒姿を消してから通常どおり再登場する（姿を消している間は描かず、当たりもしない）
+
+| 種類 | 逃げ方 | 驚いた動き |
+|---|---|---|
+| エイ | 逃げ去る | 軽く縮み、翼を大きく速く羽ばたかせて進行方向へダッシュ |
+| クリオネ | 留まる | 翼を高速でパタパタさせ、くるっと揺れながら上へ跳ぶ |
+| クシクラゲ | 留まる | 大きく縮みながら強く光り、触れた位置から離れる |
+| グラスオクトパス | 逃げ去る | ギュッと縮み、触れた位置と逆方向へ噴射して回転が速まる |
+| リーフィーシードラゴン | 留まる | 小刻みに震え、くるりと向きを反転して逆方向へ泳ぐ |
+| クラゲ | 留まる | 傘を 3 回ほど強く拍動させて上へ跳ねる |
+
+- 種類ごとの値（縮み量・加速・羽ばたき・震え・回転・光）は `creatures.ts` の `CREATURE_SPECS[].startle`
+- 描画: 姿勢に `glow`（0..1）と `visibility`（0 = 姿を消している）を持たせ、standard・rich の両方が同じ値で描く
 
 ## 8. 適応型画質（Tier 設計）
 

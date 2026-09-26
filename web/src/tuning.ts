@@ -132,5 +132,25 @@ export const CREATURE_RISE_SPEED_MAX = 0.024;
 export const CREATURE_GLIDE_SPEED_MIN = 0.018;
 export const CREATURE_GLIDE_SPEED_MAX = 0.03;
 
+// ---- 浮遊生物の驚きの反応（7.5.1） ----
+/** 当たり判定のマスク 1 辺のマス数 */
+export const CREATURE_HIT_MASK_SIZE = 64;
+/** 画像の最大 α のこの割合以上を「体」とみなす。下げると薄い触手やヒレでも反応する */
+export const CREATURE_HIT_ALPHA_RATIO = 0.25;
+/** 驚いた直後に再反応しない秒 */
+export const CREATURE_STARTLE_COOLDOWN_S = 0.4;
+/** 縮んで膨らみ返す減衰振動の周波数 Hz と減衰の速さ（1/秒）。周波数を上げるとプルプル、減衰を下げると長く揺れる */
+export const CREATURE_SQUASH_HZ = 2.4;
+export const CREATURE_SQUASH_DAMPING = 5;
+/** 光ったときに不透明度へ上乗せする倍率（glow 1 で CREATURE_OPACITY × (1 + この値)） */
+export const CREATURE_GLOW_OPACITY_BOOST = 1.4;
+/** 光ったときに加算する明るさ（glow 1 のとき画像の色 × この値） */
+export const CREATURE_GLOW_ADD = 0.35;
+/** 向きを反転する動きの秒（リーフィーシードラゴン） */
+export const CREATURE_TURN_S = 0.4;
+/** 逃げ去った生き物が再登場するまでの秒 */
+export const CREATURE_FLEE_RETURN_MIN_S = 4;
+export const CREATURE_FLEE_RETURN_MAX_S = 8;
+
 // ---- ホバー（デスクトップ） ----
 export const HOVER_HIGHLIGHT_RADIUS_SLOP_PX = 4;

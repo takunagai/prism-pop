@@ -30,7 +30,15 @@ import {
   spawnSplash,
   updateEffects,
 } from "./effects";
-import { createCreatureField, loadCreatureImages, updateCreatures } from "./creatures";
+import {
+  buildCreatureHitMasks,
+  createCreatureField,
+  hitTestCreatures,
+  loadCreatureImages,
+  startleCreature,
+  updateCreatures,
+} from "./creatures";
+import type { CreatureHitMask } from "./creatures";
 import { backgroundBlobs } from "./field";
 import { QualityController } from "./quality";
 import type { QualityTier } from "./quality";
@@ -93,8 +101,11 @@ const SPRITE_REBUILD_DEBOUNCE_MS = 150;
 const creatureField = createCreatureField();
 /** 浮遊生物の画像。読み込み完了までは null（その間は描かない） */
 let creatureImages: HTMLImageElement[] | null = null;
+/** 浮遊生物の当たり判定マスク。読み込み完了までは null（その間は生き物に当たらない） */
+let creatureHitMasks: CreatureHitMask[] | null = null;
 void loadCreatureImages().then((images) => {
   creatureImages = images;
+  if (images) creatureHitMasks = buildCreatureHitMasks(images);
 });
 let creaturesCtx: CanvasRenderingContext2D | null = null;
 let richRenderer: RichGLRenderer | null = null;
@@ -124,6 +135,8 @@ let lastError = "";
 let lastAmp = 0;
 /** 種類別の累計 pop 数（検証・診断用） */
 const popTotals: Record<PopKind, number> = { tap: 0, swipe: 0, chain: 0 };
+/** 生き物を驚かせた累計回数（検証・診断用） */
+let creatureStartleCount = 0;
 
 let hoverX: number | null = null;
 let hoverY: number | null = null;
@@ -189,6 +202,7 @@ function collectDebugInfo(): DebugSnapshot {
     popsTap: popTotals.tap,
     popsSwipe: popTotals.swipe,
     popsChain: popTotals.chain,
+    creatureStartles: creatureStartleCount,
     combo: comboCount,
     ...audio.getDiagnostics(),
   };
@@ -214,6 +228,25 @@ if (import.meta.env.DEV) {
       bubbleField.bubbles
         .filter((bubble) => bubble.active && bubble.state === "rising")
         .map((bubble) => ({ x: bubble.x, y: bubble.y, radius: bubble.radius }));
+  // 生き物の体の上で、泡に重なっていない画面内の点（無ければ null）。姿勢の状態も返す
+  (window as unknown as { __prismCreatureTarget: (name: string) => unknown }).__prismCreatureTarget = (name) => {
+    const creature = creatureField.creatures.find((candidate) => candidate.spec.name === name);
+    if (!creature || !creatureHitMasks) return null;
+    const pose = creatureField.poses[creature.index];
+    const state = { isHidden: creature.isHidden, isFleeing: creature.isFleeing, glow: pose.glow, halfWidth: pose.halfWidth };
+    for (let attempt = 0; attempt < 400; attempt++) {
+      const x = pose.centerX + (Math.random() * 2 - 1) * Math.abs(pose.halfWidth);
+      const y = pose.centerY + (Math.random() * 2 - 1) * Math.abs(pose.halfHeight);
+      if (x < 8 || y < 8 || x > width - 8 || y > height - 8) continue;
+      if (hitTestPoint(bubbleField, x, y, HIT_SLOP_PX_TOUCH * 2)) continue;
+      // 取得からクリックまでの間に動いても外れないよう、上下左右 12px も同じ生き物に当たる内側の点を選ぶ
+      const isInside = [[0, 0], [12, 0], [-12, 0], [0, 12], [0, -12]].every(
+        ([offsetX, offsetY]) => hitTestCreatures(creatureField, creatureHitMasks!, x + offsetX, y + offsetY) === creature,
+      );
+      if (isInside) return { x, y, ...state };
+    }
+    return { x: null, y: null, ...state };
+  };
 }
 
 // ---- 2D レイヤーのサイズ（#bg / #glow は低解像度、#creatures は CSS px 等倍） ----
@@ -253,6 +286,16 @@ function tryPopAt(x: number, y: number, kind: PopKind, slopPx: number): void {
   const bubble = hitTestPoint(bubbleField, x, y, slopPx);
   if (bubble) {
     doPop(bubble, kind);
+    return;
+  }
+  // 泡が無い場所で生き物の体に触れたら驚かせる（クールダウン中の再タップも空振りにしない）
+  const creature = creatureHitMasks ? hitTestCreatures(creatureField, creatureHitMasks, x, y) : null;
+  if (creature) {
+    if (startleCreature(creatureField, creature, x, y, width, height, performance.now() / 1000)) {
+      creatureStartleCount++;
+      spawnMissRipple(effectsState, x, y, Math.min(width, height) * 0.08);
+      audio.creature({ species: creature.spec.name, x: x / width, y: y / height });
+    }
     return;
   }
   missPush(bubbleField, x, y, width, height);

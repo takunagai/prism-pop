@@ -85,6 +85,21 @@ pnpm build    # tsc --noEmit → vite build
 | `CREATURE_RISE_SPEED_MIN` / `_MAX` | 0.014 / 0.024（画面高さ比/秒） | 昇る種類（クラゲ・クリオネ・クシクラゲ）の速さ。グラスオクトパスはこの 0.7 倍で斜めに漂う |
 | `CREATURE_GLIDE_SPEED_MIN` / `_MAX` | 0.018 / 0.03（画面幅比/秒） | 横に進む種類（エイ・リーフィーシードラゴン）の速さ |
 
+#### 驚きの反応（7.5.1）
+
+種類ごとの反応（逃げ方・縮み・羽ばたき・震え・回転・光）は `CREATURE_SPECS[].startle`。
+
+| 定数 | 既定値 | 効き方 |
+|---|---|---|
+| `CREATURE_HIT_ALPHA_RATIO` | 0.25 | 画像の最大 α のこの割合以上を体とみなす。下げると薄い触手やヒレでも反応する |
+| `CREATURE_HIT_MASK_SIZE` | 64 | 当たり判定マスクの 1 辺のマス数。上げると輪郭に忠実になる |
+| `CREATURE_STARTLE_COOLDOWN_S` | 0.4 | 驚いた直後に再反応しない秒。下げると連打で何度も鳴る |
+| `CREATURE_SQUASH_HZ` / `_DAMPING` | 2.4 / 5 | 縮んで膨らみ返す揺れの速さと収まる速さ |
+| `CREATURE_GLOW_OPACITY_BOOST` | 1.4 | 光ったときに不透明度へ上乗せする倍率 |
+| `CREATURE_GLOW_ADD` | 0.35 | 光ったときに加算する明るさ。上げると強く発光する |
+| `CREATURE_TURN_S` | 0.4 | 向きを反転する動きの秒（リーフィーシードラゴン） |
+| `CREATURE_FLEE_RETURN_MIN_S` / `_MAX_S` | 4 / 8 | 逃げ去った生き物（エイ・グラスオクトパス）が再登場するまでの秒 |
+
 ### 適応型画質（`quality.ts`）
 
 | 定数 | 既定値 | 効き方 |
