@@ -1,8 +1,12 @@
 # Prism Pop
 
+> **このリポジトリは移転しました。** Prism Pop は作品集 [play](https://github.com/takunagai/play) の `works/prism-pop/` で開発を続けています。遊ぶ: https://play.nagai-shouten.com/works/prism-pop/
+>
+> **This repository has moved.** Prism Pop now lives in `works/prism-pop/` of the [play](https://github.com/takunagai/play) collection. Play: https://play.nagai-shouten.com/works/prism-pop/
+
 **触れて、はじけさせて。** 虹色の泡を割るたびに澄んだベルが鳴る、ブラウザで遊ぶ音と光のインタラクティブアート。
 
-**[ブラウザで遊ぶ ─ prism-pop.nagai-shouten.workers.dev](https://prism-pop.nagai-shouten.workers.dev)**
+**[ブラウザで遊ぶ ─ play.nagai-shouten.com/works/prism-pop](https://play.nagai-shouten.com/works/prism-pop/)**
 インストール不要 / スマホ・PC 対応 / 音が出ます（ヘッドホン推奨）
 
 ![Prism Pop のタイトル画面 ─ 泡の奥を半透明の海の生き物が漂う](docs/images/title.webp)
@@ -115,7 +119,7 @@ pnpm preview   # ビルド結果の確認
 
 **Touch it, let it pop.** An interactive art piece for the browser where every iridescent bubble you pop rings a clear bell.
 
-**[Play in your browser ─ prism-pop.nagai-shouten.workers.dev](https://prism-pop.nagai-shouten.workers.dev)**
+**[Play in your browser ─ play.nagai-shouten.com/works/prism-pop](https://play.nagai-shouten.com/works/prism-pop/)**
 No install / works on phones and desktops / has sound (headphones recommended)
 
 Translucent sea creatures drift slowly behind the bubbles. Pop one and a bell rings out with a spray of light. Keep popping and the notes stack into chords, climbing higher the faster you go. Stop, and only the reverb lingers while new bubbles rise. There is no score and no time limit ─ play as long as you like.
